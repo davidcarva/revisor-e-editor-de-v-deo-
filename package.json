@@ -1,0 +1,36 @@
+{
+  "name": "revisor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Estacao de revisao: player de video longo, marcacoes, transcricao e ponte com o Premiere Pro",
+  "scripts": {
+    "server": "node server/index.mjs",
+    "web": "vite",
+    "dev": "concurrently -k -n SERVER,VITE -c cyan,magenta \"npm:server\" \"npm:web\"",
+    "build": "vite build",
+    "icone": "node scripts/gerar-icone.mjs",
+    "app": "npm run build && electron electron/main.mjs",
+    "atalho": "node scripts/criar-atalho.mjs",
+    "teste": "node server/_test-xml.mjs && node server/_test-pipeline.mjs",
+    "transcricao:instalar": "python -m venv .venv-whisper && .venv-whisper\\Scripts\\python.exe -m pip install --upgrade pip && .venv-whisper\\Scripts\\python.exe -m pip install \"faster-whisper>=1.1.0\" nvidia-cublas-cu12 nvidia-cudnn-cu12"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^33.3.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  }
+}
