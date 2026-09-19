@@ -59,6 +59,40 @@ CREATE TABLE IF NOT EXISTS tracks (
   UNIQUE (source_id, kind, stream_index)
 );
 
+-- Biblioteca: o indice de midia do computador.
+--
+-- Separada da tabela sources de proposito: sources e o que voce esta revisando,
+-- com proxy e picos em disco; a biblioteca e so um catalogo do que existe nas
+-- pastas, barato de manter. Um arquivo pode estar na biblioteca sem nunca ter
+-- virado uma fonte — que e o caso da esmagadora maioria.
+CREATE TABLE IF NOT EXISTS pastas (
+  caminho   TEXT PRIMARY KEY,
+  adicionada TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS biblioteca (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  caminho    TEXT NOT NULL UNIQUE,
+  nome       TEXT NOT NULL,
+  pasta      TEXT NOT NULL,
+  ext        TEXT NOT NULL,
+  tipo       TEXT NOT NULL,              -- 'video' | 'audio'
+  tamanho    INTEGER NOT NULL DEFAULT 0,
+  modificado REAL NOT NULL DEFAULT 0,    -- mtimeMs: muda -> miniatura refeita
+  duracao    REAL,
+  largura    INTEGER,
+  altura     INTEGER,
+  faixas_audio INTEGER,
+  poster     TEXT,
+  sondado    INTEGER NOT NULL DEFAULT 0, -- ja passou pelo ffprobe?
+  ausente    INTEGER NOT NULL DEFAULT 0, -- sumiu do disco na ultima varredura
+  visto_em   TEXT,                       -- ultima vez aberto no app
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bib_pasta ON biblioteca(pasta, nome);
+CREATE INDEX IF NOT EXISTS idx_bib_visto ON biblioteca(visto_em DESC);
+CREATE INDEX IF NOT EXISTS idx_bib_mod ON biblioteca(modificado DESC);
+
 CREATE TABLE IF NOT EXISTS transcricao (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   track_id  INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
@@ -259,6 +293,93 @@ export function updateMarker(id, patch) {
 export const deleteMarker = (id) =>
   handle().prepare('DELETE FROM markers WHERE id=?').run(id);
 
+
+// ------------------------------------------------------------ biblioteca
+
+export const listarPastas = () =>
+  handle().prepare('SELECT * FROM pastas ORDER BY caminho').all();
+
+export const adicionarPasta = (caminho) =>
+  handle().prepare('INSERT OR IGNORE INTO pastas (caminho) VALUES (?)').run(caminho);
+
+export function removerPasta(caminho) {
+  const d = handle();
+  d.prepare('DELETE FROM pastas WHERE caminho=?').run(caminho);
+  // Tira da biblioteca o que vivia sob essa pasta, mas nao toca em disco.
+  d.prepare('DELETE FROM biblioteca WHERE caminho LIKE ?').run(`${caminho}%`);
+}
+
+/**
+ * Insere ou atualiza um arquivo do catalogo.
+ * Se o arquivo mudou (mtime), invalida a sondagem e a miniatura — senao a grade
+ * mostraria o quadro de uma versao que nao existe mais.
+ */
+export function upsertMidia(m) {
+  const d = handle();
+  const atual = d.prepare('SELECT id, modificado FROM biblioteca WHERE caminho=?').get(m.caminho);
+  if (atual) {
+    const mudou = Math.abs(Number(atual.modificado) - m.modificado) > 1;
+    d.prepare(`UPDATE biblioteca SET nome=?, pasta=?, ext=?, tipo=?, tamanho=?,
+               modificado=?, ausente=0${mudou ? ', sondado=0, poster=NULL' : ''} WHERE id=?`)
+      .run(m.nome, m.pasta, m.ext, m.tipo, m.tamanho, m.modificado, atual.id);
+    return Number(atual.id);
+  }
+  const r = d.prepare(`INSERT INTO biblioteca
+      (caminho, nome, pasta, ext, tipo, tamanho, modificado)
+      VALUES (?,?,?,?,?,?,?)`)
+    .run(m.caminho, m.nome, m.pasta, m.ext, m.tipo, m.tamanho, m.modificado);
+  return Number(r.lastInsertRowid);
+}
+
+export const getMidia = (id) =>
+  handle().prepare('SELECT * FROM biblioteca WHERE id=?').get(id);
+
+export const getMidiaPorCaminho = (caminho) =>
+  handle().prepare('SELECT * FROM biblioteca WHERE caminho=?').get(caminho);
+
+export function setSondagem(id, s) {
+  handle().prepare(`UPDATE biblioteca SET duracao=?, largura=?, altura=?,
+                    faixas_audio=?, sondado=1 WHERE id=?`)
+    .run(s.duracao ?? null, s.largura ?? null, s.altura ?? null,
+         s.faixas_audio ?? null, id);
+}
+
+export const setPoster = (id, caminho) =>
+  handle().prepare('UPDATE biblioteca SET poster=? WHERE id=?').run(caminho, id);
+
+export const marcarVisto = (caminho) =>
+  handle().prepare("UPDATE biblioteca SET visto_em=datetime('now') WHERE caminho=?").run(caminho);
+
+export const marcarAusentes = (pasta) =>
+  handle().prepare('UPDATE biblioteca SET ausente=1 WHERE pasta LIKE ?').run(`${pasta}%`);
+
+/** Grade da inicial. `ordem` decide a secao: recentes, novos ou alfabetico. */
+export function listarMidia({ q = '', pasta = '', ordem = 'modificado', limite = 120, offset = 0 } = {}) {
+  const cond = ['ausente = 0'];
+  const args = [];
+  if (q) { cond.push('nome LIKE ?'); args.push(`%${q}%`); }
+  if (pasta) { cond.push('pasta LIKE ?'); args.push(`${pasta}%`); }
+  if (ordem === 'vistos') cond.push('visto_em IS NOT NULL');
+
+  const ordenar = {
+    vistos: 'visto_em DESC',
+    modificado: 'modificado DESC',
+    nome: 'nome COLLATE NOCASE',
+  }[ordem] ?? 'modificado DESC';
+
+  args.push(limite, offset);
+  return handle().prepare(`SELECT * FROM biblioteca WHERE ${cond.join(' AND ')}
+    ORDER BY ${ordenar} LIMIT ? OFFSET ?`).all(...args);
+}
+
+export function contarMidia() {
+  const d = handle();
+  return {
+    total: d.prepare('SELECT COUNT(*) AS n FROM biblioteca WHERE ausente=0').get().n,
+    vistos: d.prepare('SELECT COUNT(*) AS n FROM biblioteca WHERE visto_em IS NOT NULL AND ausente=0').get().n,
+    semPoster: d.prepare("SELECT COUNT(*) AS n FROM biblioteca WHERE poster IS NULL AND tipo='video' AND ausente=0").get().n,
+  };
+}
 
 // ------------------------------------------------------------ transcricao
 

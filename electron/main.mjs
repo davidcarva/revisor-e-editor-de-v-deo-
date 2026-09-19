@@ -294,6 +294,14 @@ function criarJanela() {
 
 ipcMain.handle('sessao', () => ({ token: TOKEN, base, arquivoInicial: arquivoPendente }));
 
+ipcMain.handle('escolher-pasta', async () => {
+  const r = await dialog.showOpenDialog(janela, {
+    title: 'Escolher pasta de mídia',
+    properties: ['openDirectory'],
+  });
+  return r.canceled ? null : r.filePaths[0];
+});
+
 ipcMain.handle('escolher-arquivo', async () => {
   const r = await dialog.showOpenDialog(janela, {
     title: 'Escolher gravação',

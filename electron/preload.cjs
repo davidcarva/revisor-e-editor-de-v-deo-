@@ -8,6 +8,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('revisor', {
   escolherArquivo: () => ipcRenderer.invoke('escolher-arquivo'),
+  escolherPasta: () => ipcRenderer.invoke('escolher-pasta'),
   // Token da sessão + arquivo vindo do "Abrir com", lidos uma vez no arranque.
   sessao: () => ipcRenderer.invoke('sessao'),
   // Arquivo aberto com a janela já de pé (segundo duplo clique).

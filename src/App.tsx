@@ -3,7 +3,7 @@ import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador } from './li
 import { Player } from './lib/player';
 import { estaDigitando } from './lib/teclado';
 import { caminhoDoArrasto, sessao } from './lib/sessao';
-import { Abrir } from './components/Abrir';
+import { Inicio } from './components/Inicio';
 import { Visor } from './components/Player';
 import { Timeline } from './components/Timeline';
 import { PainelLog } from './components/PainelLog';
@@ -14,7 +14,6 @@ import { baseDoArquivo } from './lib/tempo';
 type Selecao = { de: number; ate: number } | null;
 
 export default function App() {
-  const [fontes, setFontes] = useState<Fonte[]>([]);
   const [atualId, setAtualId] = useState<number | null>(null);
   const [fonte, setFonte] = useState<Fonte | null>(null);
   const [marcadores, setMarcadores] = useState<Marcador[]>([]);
@@ -37,15 +36,10 @@ export default function App() {
     timerAviso.current = window.setTimeout(() => setAviso(null), 6000);
   }, []);
 
-  const recarregarFontes = useCallback(async () => {
-    try { setFontes(await api.fontes()); } catch (e) { avisar(String((e as Error).message)); }
-  }, [avisar]);
-
   const recarregarFonte = useCallback(async (id: number) => {
     try { setFonte(await api.fonte(id)); } catch (e) { avisar(String((e as Error).message)); }
   }, [avisar]);
 
-  useEffect(() => { recarregarFontes(); }, [recarregarFontes]);
   useEffect(() => () => player.destruir(), [player]);
 
   useEffect(() => {
@@ -75,9 +69,6 @@ export default function App() {
         : f));
       return;
     }
-    setFontes((lista) => lista.map((f) => (f.id === ev.sourceId
-      ? { ...f, status: (ev.status as Fonte['status']) ?? f.status, progress: ev.progress ?? f.progress, stage: ev.stage ?? f.stage }
-      : f)));
     if (ev.sourceId === atualId) {
       setFonte((f) => (f && f.id === ev.sourceId
         ? { ...f, status: (ev.status as Fonte['status']) ?? f.status, progress: ev.progress ?? f.progress, stage: ev.stage ?? f.stage }
@@ -88,13 +79,16 @@ export default function App() {
 
   // ------------------------------------------------------------- acoes
 
-  /** Modo revisão: ingest completo, com proxy. */
-  const abrir = async (caminho: string) => {
+  /**
+   * Promove de assistir para revisar: gera proxy e miniaturas da régua.
+   * É uma escolha explícita porque custa caro — ~15 GB de proxy por 10 h.
+   */
+  const revisar = async () => {
+    if (!fonte) return;
     try {
-      const f = await api.abrir(caminho);
-      await recarregarFontes();
-      setAtualId(f.id);
-    } catch (e) { avisar(`não consegui abrir: ${(e as Error).message}`); }
+      await api.revisar(fonte.id);
+      avisar('gerando proxy e miniaturas — dá pra continuar assistindo enquanto isso');
+    } catch (e) { avisar(String((e as Error).message)); }
   };
 
   /**
@@ -108,7 +102,6 @@ export default function App() {
     setAbrindo(caminho);
     try {
       const f = await api.assistir(caminho);
-      await recarregarFontes();
       setAtualId(f.id);
       if (f.extraindoAudio) avisar('separando as faixas de áudio em segundo plano…');
     } catch (e) {
@@ -116,7 +109,7 @@ export default function App() {
     } finally {
       setAbrindo(null);
     }
-  }, [avisar, recarregarFontes]);
+  }, [avisar]);
 
   // "Abrir com" do Windows, e o segundo duplo clique com a janela já aberta.
   useEffect(() => {
@@ -247,12 +240,7 @@ export default function App() {
     return (
       <div className="app">
         <Cabecalho />
-        <Abrir
-          fontes={fontes}
-          aoAbrir={abrir}
-          aoSelecionar={setAtualId}
-          aoRemover={async (id) => { await api.remover(id, true); recarregarFontes(); }}
-        />
+        <Inicio aoAbrir={assistir} aoAvisar={avisar} />
         {aviso && <div className="aviso-flutuante">{aviso}</div>}
       </div>
     );
@@ -268,6 +256,14 @@ export default function App() {
             Enviar pro Premiere
           </button>
           <button onClick={() => exportar('csv')}>CSV</button>
+          <span className="separador" />
+          <button
+            onClick={revisar}
+            disabled={!!fonte.proxy_path}
+            title={fonte.proxy_path
+              ? 'proxy e miniaturas já existem'
+              : 'Gera proxy e miniaturas — deixa a timeline fluida, custa disco'}
+          >{fonte.proxy_path ? 'Revisão pronta' : 'Preparar revisão'}</button>
           <span className="separador" />
           {estadoTranscricao && (
             <IndicadorTranscricao

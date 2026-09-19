@@ -9,6 +9,7 @@ declare global {
   interface Window {
     revisor?: {
       escolherArquivo(): Promise<string | null>;
+      escolherPasta?(): Promise<string | null>;
       sessao(): Promise<{ token: string; base: string; arquivoInicial: string | null }>;
       aoAbrirArquivo(cb: (caminho: string) => void): () => void;
       caminhoDoArquivo(file: File): string | null;

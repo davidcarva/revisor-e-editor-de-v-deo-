@@ -74,6 +74,26 @@ export type Fala = {
   texto: string;
 };
 
+export type Midia = {
+  id: number;
+  caminho: string;
+  nome: string;
+  pasta: string;
+  ext: string;
+  tipo: 'video' | 'audio';
+  tamanho: number;
+  modificado: number;
+  duracao: number | null;
+  largura: number | null;
+  altura: number | null;
+  faixas_audio: number | null;
+  poster: string | null;
+  sondado: number;
+  visto_em: string | null;
+};
+
+export type Pasta = { caminho: string; adicionada: string };
+
 export type ItemArquivo = { nome: string; dir: boolean; caminho: string; size: number };
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -144,6 +164,19 @@ export const api = {
   exportar: (id: number, formato: string, dir?: string) =>
     pedir<{ arquivo: string }>(`/api/sources/${id}/export/${formato}`, json('POST', { dir })),
 
+  biblioteca: (p: { q?: string; pasta?: string; ordem?: string; limite?: number } = {}) =>
+    pedir<{ itens: Midia[]; contagem: { total: number; vistos: number; semPoster: number }; pastas: Pasta[] }>(
+      `/api/biblioteca?${new URLSearchParams(
+        Object.entries(p).filter(([, v]) => v != null && v !== '')
+          .map(([k, v]) => [k, String(v)]),
+      )}`),
+  adicionarPasta: (caminho: string) =>
+    pedir<{ achados: number; pasta: string }>('/api/biblioteca/pastas', json('POST', { caminho })),
+  removerPasta: (caminho: string) =>
+    pedir(`/api/biblioteca/pastas?caminho=${encodeURIComponent(caminho)}`, { method: 'DELETE' }),
+  revarrer: () => pedir<{ total: number }>('/api/biblioteca/varrer', json('POST')),
+  infoMidia: (id: number) => pedir<Midia>(`/api/biblioteca/${id}/info`),
+
   listarPasta: (dir?: string) =>
     pedir<{ dir: string; pai: string | null; itens: ItemArquivo[] }>(
       `/api/fs/list${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
@@ -158,6 +191,8 @@ export const api = {
     return new Int8Array(await r.arrayBuffer());
   },
 };
+
+export const urlPoster = (id: number) => `/api/biblioteca/${id}/poster`;
 
 export const urlProxy = (id: number) => `/media/${id}/proxy`;
 

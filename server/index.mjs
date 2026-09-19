@@ -15,6 +15,7 @@ import * as ingest from './ingest.mjs';
 import { readWindow } from './peaks.mjs';
 import { proximoInicio } from './segmentos.mjs';
 import * as transcricao from './transcricao.mjs';
+import * as biblioteca from './biblioteca.mjs';
 import { buildFcp7Xml, buildMarkerCsv } from './premiere-xml.mjs';
 
 const PORT = Number(process.env.REVISOR_PORT || 5273);
@@ -30,6 +31,7 @@ const EXTS_MIDIA = new Set([
 fs.mkdirSync(HOME, { recursive: true });
 db.open(path.join(HOME, 'projeto.revdb'));
 ingest.setCacheRoot(path.join(HOME, 'cache'));
+biblioteca.setRaizPosters(path.join(HOME, 'cache'));
 
 const interrompidas = db.limparTranscricoesInterrompidas();
 if (interrompidas) {
@@ -116,6 +118,7 @@ app.post('/api/assistir', rota(async (req, res) => {
   if (!alvo) return res.status(400).json({ erro: 'informe o caminho do arquivo' });
 
   const { sourceId, info } = await ingest.register(alvo);
+  db.marcarVisto(path.resolve(alvo));
   const varias = info.audioStreams.length > 1;
   // Uma faixa so nao precisa de mixer: o proprio <video> ja toca ela.
   if (varias) ingest.start(sourceId, { comVideo: false });
@@ -290,6 +293,65 @@ app.get('/api/sources/:id/segmento', rota(async (req, res) => {
     return res.status(409).json({ erro: 'nenhuma faixa marcada para navegação (botão A)' });
   }
   res.json({ t: await proximoInicio(caminhos, de, dir), faixas: faixas.length });
+}));
+
+// ------------------------------------------------------------ biblioteca
+
+app.get('/api/biblioteca', rota((req, res) => {
+  res.json({
+    itens: db.listarMidia({
+      q: String(req.query.q || ''),
+      pasta: String(req.query.pasta || ''),
+      ordem: String(req.query.ordem || 'modificado'),
+      limite: Math.min(400, Number(req.query.limite) || 120),
+      offset: Number(req.query.offset) || 0,
+    }),
+    contagem: db.contarMidia(),
+    pastas: db.listarPastas(),
+  });
+}));
+
+app.post('/api/biblioteca/pastas', rota(async (req, res) => {
+  const alvo = String(req.body?.caminho || '').trim();
+  if (!alvo) return res.status(400).json({ erro: 'informe a pasta' });
+  const abs = path.resolve(alvo);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+    return res.status(400).json({ erro: 'não é uma pasta' });
+  }
+  db.adicionarPasta(abs);
+  const achados = await biblioteca.varrer(abs);
+  res.json({ ok: true, pasta: abs, achados });
+}));
+
+app.delete('/api/biblioteca/pastas', rota((req, res) => {
+  const alvo = String(req.query.caminho || '');
+  if (!alvo) return res.status(400).json({ erro: 'informe a pasta' });
+  db.removerPasta(path.resolve(alvo));
+  res.json({ ok: true });
+}));
+
+/** Revarre tudo: pega arquivo novo, some com o que foi apagado. */
+app.post('/api/biblioteca/varrer', rota(async (req, res) => {
+  let total = 0;
+  for (const p of db.listarPastas()) {
+    try { total += await biblioteca.varrer(p.caminho); } catch { /* pasta sumiu */ }
+  }
+  res.json({ ok: true, total });
+}));
+
+/** Metadados sob demanda — o cartão pede quando entra na tela. */
+app.get('/api/biblioteca/:id/info', rota(async (req, res) => {
+  const m = await biblioteca.sondar(Number(req.params.id));
+  if (!m) return res.status(404).json({ erro: 'não encontrado' });
+  res.json(m);
+}));
+
+/** Miniatura; gera na primeira vez que alguém pede. */
+app.get('/api/biblioteca/:id/poster', rota(async (req, res) => {
+  const arquivo = await biblioteca.poster(Number(req.params.id));
+  if (!arquivo) return res.status(404).json({ erro: 'sem miniatura' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  servirArquivo(res, arquivo, 'image/jpeg');
 }));
 
 // ------------------------------------------------------------ transcricao
