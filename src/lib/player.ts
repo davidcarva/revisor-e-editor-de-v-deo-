@@ -84,6 +84,12 @@ export class Player {
   }
 
   aplicarMixagem() {
+    // No modo assistir o <video> toca o arquivo ORIGINAL, que traz o próprio
+    // áudio junto. Assim que as faixas separadas entram no ar, a faixa 1 estaria
+    // tocando duas vezes — pelo vídeo e pelo mixer. Quem manda é o mixer; o
+    // áudio embutido no vídeo só vale enquanto ele ainda não existe.
+    if (this.video) this.video.muted = this.audios.size > 0;
+
     const temSolo = this.faixas.some((f) => f.solo);
     for (const f of this.faixas) {
       const el = this.audios.get(f.id);

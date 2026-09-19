@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador } from './lib/api';
 import { Player } from './lib/player';
 import { estaDigitando } from './lib/teclado';
+import { caminhoDoArrasto, sessao } from './lib/sessao';
 import { Abrir } from './components/Abrir';
 import { Visor } from './components/Player';
 import { Timeline } from './components/Timeline';
@@ -20,6 +21,7 @@ export default function App() {
   const [selecao, setSelecao] = useState<Selecao>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [verTranscricao, setVerTranscricao] = useState(false);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
   const player = useMemo(() => new Player(), []);
 
   // Em desenvolvimento, deixa o motor de reprodução acessível pelo console — sem
@@ -86,6 +88,7 @@ export default function App() {
 
   // ------------------------------------------------------------- acoes
 
+  /** Modo revisão: ingest completo, com proxy. */
   const abrir = async (caminho: string) => {
     try {
       const f = await api.abrir(caminho);
@@ -93,6 +96,54 @@ export default function App() {
       setAtualId(f.id);
     } catch (e) { avisar(`não consegui abrir: ${(e as Error).message}`); }
   };
+
+  /**
+   * Modo assistir: toca já, sem gerar proxy.
+   *
+   * É o caminho do duplo clique e do arrastar-e-soltar. Só a extração de áudio
+   * roda em segundo plano, e só quando o arquivo tem mais de uma faixa — que é
+   * quando o mixer tem o que mixar.
+   */
+  const assistir = useCallback(async (caminho: string) => {
+    setAbrindo(caminho);
+    try {
+      const f = await api.assistir(caminho);
+      await recarregarFontes();
+      setAtualId(f.id);
+      if (f.extraindoAudio) avisar('separando as faixas de áudio em segundo plano…');
+    } catch (e) {
+      avisar(`não consegui abrir: ${(e as Error).message}`);
+    } finally {
+      setAbrindo(null);
+    }
+  }, [avisar, recarregarFontes]);
+
+  // "Abrir com" do Windows, e o segundo duplo clique com a janela já aberta.
+  useEffect(() => {
+    let vivo = true;
+    sessao().then((s) => { if (vivo && s.arquivoInicial) assistir(s.arquivoInicial); });
+    const parar = window.revisor?.aoAbrirArquivo((caminho) => assistir(caminho));
+    return () => { vivo = false; parar?.(); };
+  }, [assistir]);
+
+  // Arrastar e soltar em qualquer lugar da janela.
+  useEffect(() => {
+    const permitir = (e: DragEvent) => { e.preventDefault(); };
+    const soltar = (e: DragEvent) => {
+      e.preventDefault();
+      const arquivo = e.dataTransfer?.files?.[0];
+      if (!arquivo) return;
+      const caminho = caminhoDoArrasto(arquivo);
+      if (caminho) assistir(caminho);
+      else avisar('arrastar e soltar só funciona no aplicativo, não no navegador');
+    };
+    window.addEventListener('dragover', permitir);
+    window.addEventListener('drop', soltar);
+    return () => {
+      window.removeEventListener('dragover', permitir);
+      window.removeEventListener('drop', soltar);
+    };
+  }, [assistir, avisar]);
 
   const criarMarcador = async (m: Partial<Marcador>) => {
     if (!fonte) return;
@@ -179,6 +230,18 @@ export default function App() {
     () => (fonte ? estadoDaTranscricao(fonte.tracks) : null), [fonte?.tracks]);
 
   // ------------------------------------------------------------- render
+
+  if (abrindo && !fonte) {
+    return (
+      <div className="app">
+        <Cabecalho />
+        <div className="abrindo">
+          <div className="abrindo-nome">{abrindo.split(/[\\/]/).pop()}</div>
+          <div className="abrindo-barra"><i /></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!fonte) {
     return (

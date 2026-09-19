@@ -8,6 +8,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
+import crypto from 'node:crypto';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,6 +24,10 @@ const PORTAS_RESERVA = Array.from({ length: 20 }, (_, i) => 5390 + i);
 
 let janela = null;
 let servidor = null;
+// Compartilhado com o servidor: protege /media/direto, que e o que permite
+// comecar a tocar antes do arquivo estar registrado.
+const TOKEN = crypto.randomUUID();
+let arquivoPendente = null;
 let base = `http://127.0.0.1:${PORTA_PREFERIDA}`;
 const ui = process.env.REVISOR_UI || null;
 
@@ -52,6 +57,50 @@ function registrar(...partes) {
 
 process.on('uncaughtException', (e) => registrar('EXCEÇÃO', e?.stack || e));
 process.on('unhandledRejection', (e) => registrar('REJEIÇÃO', e?.stack || e));
+
+const EXTS = new Set([
+  '.mp4', '.mov', '.mkv', '.mxf', '.avi', '.m4v', '.webm', '.mts', '.m2ts', '.ts',
+  '.wav', '.mp3', '.m4a', '.aac', '.flac', '.aiff', '.aif', '.ogg', '.opus',
+]);
+
+/**
+ * Extrai um caminho de mídia da linha de comando.
+ *
+ * É o que faz o "Abrir com" funcionar: o Windows passa o arquivo como argumento.
+ * Os argumentos do próprio Electron (flags, o caminho do main.mjs) vêm junto,
+ * então filtra por extensão e por existir em disco.
+ */
+function arquivoDosArgumentos(argv) {
+  const ehMidia = (p) => {
+    if (!EXTS.has(path.extname(p).toLowerCase())) return false;
+    try { return fs.statSync(p).isFile(); } catch { return false; }
+  };
+
+  const soltos = argv.slice(1).filter((a) => !a.startsWith('-'));
+  for (const a of soltos) if (ehMidia(a)) return path.resolve(a);
+
+  // Caminho com espaço que chegou SEM aspas vem picado em vários argumentos
+  // ("D:\Meus" + "vídeos\a.mp4"). O Explorer cita certo, mas um atalho editado à
+  // mão ou um script não necessariamente — e pasta de vídeo quase sempre tem
+  // espaço no nome. Tenta remontar as sequências antes de desistir.
+  for (let i = 0; i < soltos.length; i++) {
+    for (let j = soltos.length; j > i + 1; j--) {
+      const junto = soltos.slice(i, j).join(' ');
+      if (ehMidia(junto)) return path.resolve(junto);
+    }
+  }
+  return null;
+}
+
+function abrirNaJanela(arquivo) {
+  if (!arquivo) return;
+  arquivoPendente = arquivo;
+  if (janela && !janela.webContents.isLoading()) {
+    janela.webContents.send('abrir-arquivo', arquivo);
+    if (janela.isMinimized()) janela.restore();
+    janela.focus();
+  }
+}
 
 /**
  * Confere se quem responde nessa porta é o NOSSO servidor.
@@ -189,7 +238,7 @@ async function garantirServidor() {
   servidor = spawn(node.exe, [path.join(RAIZ, 'server', 'index.mjs')], {
     cwd: RAIZ,
     windowsHide: true,
-    env: { ...process.env, ...node.env, REVISOR_PORT: String(porta) },
+    env: { ...process.env, ...node.env, REVISOR_PORT: String(porta), REVISOR_TOKEN: TOKEN },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   servidor.stdout.pipe(log);
@@ -220,7 +269,7 @@ function criarJanela() {
     show: false,
     icon: path.join(RAIZ, 'build', 'revisor.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       // A timeline desenha por requestAnimationFrame e o player corrige deriva de
@@ -243,6 +292,8 @@ function criarJanela() {
   janela.on('closed', () => { janela = null; });
 }
 
+ipcMain.handle('sessao', () => ({ token: TOKEN, base, arquivoInicial: arquivoPendente }));
+
 ipcMain.handle('escolher-arquivo', async () => {
   const r = await dialog.showOpenDialog(janela, {
     title: 'Escolher gravação',
@@ -263,16 +314,23 @@ if (!app.requestSingleInstanceLock()) {
   registrar('outra instância já está aberta — encerrando esta');
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  // Clicar num segundo video nao abre um segundo Revisor: o arquivo vai pra
+  // janela que ja esta aberta, como qualquer reprodutor faz.
+  app.on('second-instance', (_ev, argv) => {
+    const arquivo = arquivoDosArgumentos(argv);
     if (janela) {
       if (janela.isMinimized()) janela.restore();
       janela.focus();
     }
+    abrirNaJanela(arquivo);
   });
 
   app.whenReady().then(async () => {
     try {
       registrar('electron pronto');
+      registrar('argv:', JSON.stringify(process.argv));
+      arquivoPendente = arquivoDosArgumentos(process.argv);
+      registrar('arquivo da linha de comando:', arquivoPendente ?? '(nenhum)');
       const modo = await garantirServidor();
       registrar('servidor', modo, 'em', base);
       criarJanela();

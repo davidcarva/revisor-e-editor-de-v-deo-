@@ -4,12 +4,6 @@ import { useEffect, useState } from 'react';
 import { api, type Fonte, type ItemArquivo } from '../lib/api';
 import { duracaoCurta } from '../lib/tempo';
 
-declare global {
-  interface Window {
-    revisor?: { escolherArquivo(): Promise<string | null> };
-  }
-}
-
 const mb = (n: number) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${(n / 1e6).toFixed(0)} MB`);
 
 export function Abrir({

@@ -83,8 +83,11 @@ export async function register(file) {
   return { sourceId, info };
 }
 
-/** Roda o ingest completo em background. Idempotente: pula o que ja existe. */
-export function start(sourceId, { force = false } = {}) {
+/**
+ * Roda o ingest em background. Idempotente: pula o que ja existe.
+ * `comVideo: false` faz so a passada de audio (modo assistir).
+ */
+export function start(sourceId, { force = false, comVideo = true } = {}) {
   if (jobs.has(sourceId)) return jobs.get(sourceId);
 
   const ctl = { children: new Set(), cancelled: false };
@@ -94,7 +97,7 @@ export function start(sourceId, { force = false } = {}) {
   };
   jobs.set(sourceId, ctl);
 
-  run(sourceId, ctl, force)
+  run(sourceId, ctl, force, comVideo)
     .then(() => {
       if (!ctl.cancelled) report(sourceId, { status: 'pronto', progress: 1, stage: null });
     })
@@ -111,7 +114,7 @@ export function cancel(sourceId) {
   jobs.get(sourceId)?.cancel();
 }
 
-async function run(sourceId, ctl, force) {
+async function run(sourceId, ctl, force, comVideo) {
   const src = db.getSource(sourceId);
   if (!src) throw new Error('fonte nao encontrada');
   const dir = path.join(CACHE_ROOT, String(sourceId));
@@ -121,8 +124,12 @@ async function run(sourceId, ctl, force) {
   const tracks = db.listTracks(sourceId);
   const audioTracks = tracks.filter((t) => t.kind === 'audio');
 
-  // Pesos so pra barra de progresso nao dar pulo feio.
-  const hasVideo = !!meta.hasVideo;
+  // As duas metades do ingest custam coisas muito diferentes, e servem a coisas
+  // diferentes. O proxy e caro (horas de GPU, ~15 GB por 10 h) e so melhora o
+  // arraste da agulha. A passada de audio e barata e e o que destrava o mixer de
+  // faixas — sem ela o Chromium toca so a PRIMEIRA faixa do arquivo, e um vídeo
+  // multipista vira mono-pista. Por isso, no modo assistir, so a segunda roda.
+  const hasVideo = !!meta.hasVideo && comVideo;
   const wVideo = hasVideo ? 0.65 : 0;
   const wAudio = 1 - wVideo;
 

@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import * as db from './db.mjs';
 import * as ingest from './ingest.mjs';
 import { readWindow } from './peaks.mjs';
@@ -17,6 +18,9 @@ import * as transcricao from './transcricao.mjs';
 import { buildFcp7Xml, buildMarkerCsv } from './premiere-xml.mjs';
 
 const PORT = Number(process.env.REVISOR_PORT || 5273);
+// Token de sessao: protege /media/direto, que serve qualquer arquivo do disco.
+// Vem do ambiente quando o Electron sobe o servidor, senao e sorteado aqui.
+const TOKEN = process.env.REVISOR_TOKEN || crypto.randomUUID();
 const HOME = process.env.REVISOR_HOME || path.join(os.homedir(), 'Revisor');
 const EXTS_MIDIA = new Set([
   '.mp4', '.mov', '.mkv', '.mxf', '.avi', '.m4v', '.webm', '.mts', '.m2ts', '.ts',
@@ -68,7 +72,7 @@ function exigirFonte(req) {
 // antes de reaproveitar um servidor ja de pe. Sem essa assinatura ele acabaria
 // se ligando a qualquer outro servidor local que respondesse 200 nessa porta.
 app.get('/api/health', (req, res) => res.json({
-  ok: true, app: 'revisor', porta: PORT,
+  ok: true, app: 'revisor', porta: PORT, token: TOKEN,
   home: HOME, banco: db.dbPath(), cache: ingest.cacheRoot(),
 }));
 
@@ -98,6 +102,37 @@ app.post('/api/sources', rota(async (req, res) => {
   const { sourceId } = await ingest.register(alvo);
   ingest.start(sourceId);
   res.json({ ...db.getSource(sourceId), tracks: db.listTracks(sourceId) });
+}));
+
+/**
+ * Modo assistir: registra o arquivo e devolve na hora, sem gerar proxy.
+ *
+ * A reproducao usa o arquivo ORIGINAL — o Chromium toca H.264, HEVC, VP9, MKV e
+ * WebM direto. So a passada de audio roda em segundo plano, porque e ela que
+ * destrava o mixer de faixas.
+ */
+app.post('/api/assistir', rota(async (req, res) => {
+  const alvo = String(req.body?.path || '').trim();
+  if (!alvo) return res.status(400).json({ erro: 'informe o caminho do arquivo' });
+
+  const { sourceId, info } = await ingest.register(alvo);
+  const varias = info.audioStreams.length > 1;
+  // Uma faixa so nao precisa de mixer: o proprio <video> ja toca ela.
+  if (varias) ingest.start(sourceId, { comVideo: false });
+  else db.setSourceStatus(sourceId, { status: 'pronto', progress: 1, stage: null });
+
+  res.json({
+    ...db.getSource(sourceId),
+    tracks: db.listTracks(sourceId),
+    extraindoAudio: varias,
+  });
+}));
+
+/** Promove para revisao: gera o que faltou (proxy, miniaturas). */
+app.post('/api/sources/:id/revisar', rota((req, res) => {
+  const src = exigirFonte(req);
+  ingest.start(src.id, { comVideo: true });
+  res.json({ ok: true });
 }));
 
 app.post('/api/sources/:id/reingest', rota((req, res) => {
@@ -154,6 +189,30 @@ function servirArquivo(res, file, tipo) {
   res.setHeader('Accept-Ranges', 'bytes');
   res.sendFile(path.resolve(file));
 }
+
+/**
+ * Stream direto de um arquivo do disco, sem passar pelo registro.
+ *
+ * E o que faz o vídeo comecar a tocar no instante em que a janela abre: o
+ * ffprobe e o registro no banco levam mais de um segundo num arquivo grande, e
+ * esperar por eles seria um segundo de tela preta a cada duplo clique.
+ *
+ * Exige o token gerado no arranque. Sem ele, qualquer processo local poderia
+ * pedir qualquer arquivo do disco a este servidor.
+ */
+app.get('/media/direto', rota((req, res) => {
+  if (req.query.token !== TOKEN) return res.status(403).json({ erro: 'token invalido' });
+  const alvo = String(req.query.p || '');
+  if (!alvo) return res.status(400).json({ erro: 'informe p=' });
+  const abs = path.resolve(alvo);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    return res.status(404).json({ erro: 'arquivo nao encontrado' });
+  }
+  if (!EXTS_MIDIA.has(path.extname(abs).toLowerCase())) {
+    return res.status(415).json({ erro: 'extensao nao suportada' });
+  }
+  servirArquivo(res, abs);
+}));
 
 app.get('/media/:id/proxy', rota((req, res) => {
   const src = exigirFonte(req);

@@ -95,7 +95,13 @@ const json = (metodo: string, corpo?: unknown): RequestInit => ({
 });
 
 export const api = {
-  saude: () => pedir<{ home: string }>('/api/health'),
+  saude: () => pedir<{ home: string; token: string; porta: number }>('/api/health'),
+
+  /** Modo assistir: registra e devolve na hora, sem gerar proxy. */
+  assistir: (caminho: string) =>
+    pedir<Fonte & { extraindoAudio: boolean }>('/api/assistir', json('POST', { path: caminho })),
+  /** Promove para revisão: gera proxy e miniaturas. */
+  revisar: (id: number) => pedir(`/api/sources/${id}/revisar`, json('POST')),
 
   fontes: () => pedir<Fonte[]>('/api/sources'),
   fonte: (id: number) => pedir<Fonte>(`/api/sources/${id}`),
@@ -154,6 +160,13 @@ export const api = {
 };
 
 export const urlProxy = (id: number) => `/media/${id}/proxy`;
+
+/**
+ * Stream direto de um caminho do disco, sem esperar o registro.
+ * É o que faz o vídeo começar a tocar no instante em que a janela abre.
+ */
+export const urlDireto = (caminho: string, token: string) =>
+  `/media/direto?token=${encodeURIComponent(token)}&p=${encodeURIComponent(caminho)}`;
 export const urlAudioFaixa = (faixaId: number) => `/media/track/${faixaId}/audio`;
 export const urlFolha = (id: number, folha: string) => `/media/${id}/thumbs/${folha}`;
 
