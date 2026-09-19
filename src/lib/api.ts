@@ -94,6 +94,8 @@ export type Midia = {
 
 export type Pasta = { caminho: string; adicionada: string };
 
+export type Subpasta = { caminho: string; nome: string; arquivos: number };
+
 export type ItemArquivo = { nome: string; dir: boolean; caminho: string; size: number };
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -164,11 +166,21 @@ export const api = {
   exportar: (id: number, formato: string, dir?: string) =>
     pedir<{ arquivo: string }>(`/api/sources/${id}/export/${formato}`, json('POST', { dir })),
 
-  biblioteca: (p: { q?: string; pasta?: string; ordem?: string; limite?: number } = {}) =>
-    pedir<{ itens: Midia[]; contagem: { total: number; vistos: number; semPoster: number }; pastas: Pasta[] }>(
+  biblioteca: (p: {
+    q?: string; pasta?: string; ordem?: string; limite?: number; recursivo?: boolean;
+  } = {}) =>
+    pedir<{
+      itens: Midia[];
+      subpastas: Subpasta[];
+      diretos: number;
+      contagem: { total: number; vistos: number; semPoster: number };
+      pastas: Pasta[];
+    }>(
       `/api/biblioteca?${new URLSearchParams(
         Object.entries(p).filter(([, v]) => v != null && v !== '')
-          .map(([k, v]) => [k, String(v)]),
+          // `recursivo` vai como 0/1: o servidor compara com a string '0', e
+          // "false" passaria no teste como se fosse verdadeiro.
+          .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v)]),
       )}`),
   adicionarPasta: (caminho: string) =>
     pedir<{ achados: number; pasta: string }>('/api/biblioteca/pastas', json('POST', { caminho })),

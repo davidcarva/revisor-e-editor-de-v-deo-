@@ -109,13 +109,46 @@ input:focus, textarea:focus, select:focus { outline: 1px solid var(--azul); bord
 .inicio-busca { width: 260px; margin-left: 10px; padding: 5px 10px; }
 .inicio-acoes { margin-left: auto; display: flex; gap: 8px; }
 
-.inicio-pastas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; align-items: center; }
-.chip.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
-.chip-pasta { display: inline-flex; align-items: center; }
-.chip-pasta .chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.chip-x {
-  padding: 2px 6px; font-size: 10px; color: var(--apagado);
+.inicio-barra {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.trilha { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.trilha button { padding: 3px 9px; font-size: 12px; }
+.trilha button.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.trilha small { opacity: .7; }
+.trilha-sep { color: var(--apagado); margin: 0 1px; }
+.trilha-passo, .trilha-raiz { display: inline-flex; align-items: center; gap: 4px; }
+.trilha-raiz button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.trilha-x {
+  padding: 3px 6px; font-size: 10px; color: var(--apagado);
   border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0;
+}
+.inicio-controles { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.alternador {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--fraco); cursor: pointer;
+}
+.alternador input { margin: 0; }
+
+.grade-pastas {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  margin-bottom: 4px;
+}
+.cartao-pasta {
+  display: flex; align-items: center; gap: 9px; text-align: left;
+  padding: 9px 11px; background: var(--painel); border: 1px solid var(--borda);
+  border-radius: 6px;
+}
+.cartao-pasta:hover { background: var(--painel2); border-color: #3a4560; }
+.cartao-pasta-icone { font-size: 15px; flex: 0 0 auto; }
+.cartao-pasta-nome {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px;
+}
+.cartao-pasta-n {
+  color: var(--apagado); font-size: 11px;
+  font-family: ui-monospace, Consolas, monospace; flex: 0 0 auto;
 }
 
 .inicio-vazio { max-width: 460px; padding: 30px 0; }

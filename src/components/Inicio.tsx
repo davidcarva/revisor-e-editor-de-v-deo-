@@ -1,15 +1,25 @@
-// Página inicial: a biblioteca de mídia do computador, em grade.
+// Página inicial: a biblioteca de mídia do computador, navegável por pasta.
 //
 // A miniatura de cada vídeo é gerada no servidor na primeira vez que o cartão
 // aparece na tela — nunca antes. Numa pasta com centenas de gravações, gerar
 // tudo de uma vez seriam minutos de ffmpeg pra mostrar quatro fileiras.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, urlPoster, type Midia, type Pasta } from '../lib/api';
+import { api, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/api';
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
 
 const tamanhoCurto = (n: number) =>
   (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`);
+
+const ORDENS: [string, string][] = [
+  ['modificado', 'Mais recentes'],
+  ['antigos', 'Mais antigos'],
+  ['nome', 'Nome'],
+  ['duracao', 'Duração'],
+  ['tamanho', 'Tamanho'],
+];
+
+const ultimoTrecho = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
 type Props = {
   aoAbrir: (caminho: string) => void;
@@ -19,28 +29,39 @@ type Props = {
 export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [itens, setItens] = useState<Midia[]>([]);
   const [recentes, setRecentes] = useState<Midia[]>([]);
-  const [pastas, setPastas] = useState<Pasta[]>([]);
+  const [subpastas, setSubpastas] = useState<Subpasta[]>([]);
+  const [diretos, setDiretos] = useState(0);
+  const [raizes, setRaizes] = useState<Pasta[]>([]);
   const [contagem, setContagem] = useState({ total: 0, vistos: 0, semPoster: 0 });
   const [busca, setBusca] = useState('');
-  const [pastaAtiva, setPastaAtiva] = useState('');
+  const [pasta, setPasta] = useState('');
+  const [recursivo, setRecursivo] = useState(false);
+  const [ordem, setOrdem] = useState('modificado');
   const [ocupado, setOcupado] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
-      const r = await api.biblioteca({ q: busca, pasta: pastaAtiva, ordem: 'modificado', limite: 200 });
+      const r = await api.biblioteca({
+        q: busca, pasta, ordem, limite: 300,
+        // Sem pasta escolhida a grade é o acervo inteiro; aí recursivo é o único
+        // sentido possível.
+        recursivo: pasta ? recursivo : true,
+      });
       setItens(r.itens);
-      setPastas(r.pastas);
+      setSubpastas(r.subpastas ?? []);
+      setDiretos(r.diretos ?? 0);
+      setRaizes(r.pastas);
       setContagem(r.contagem);
-      // A fileira de recentes só faz sentido sem filtro: com busca ativa ela
-      // repetiria os mesmos cartões que já estão logo abaixo.
-      if (!busca && !pastaAtiva) {
-        const v = await api.biblioteca({ ordem: 'vistos', limite: 12 });
-        setRecentes(v.itens);
+
+      // A fileira de recentes só aparece na raiz e sem busca: em qualquer outro
+      // lugar ela repetiria cartões que já estão logo abaixo.
+      if (!busca && !pasta) {
+        setRecentes((await api.biblioteca({ ordem: 'vistos', limite: 12 })).itens);
       } else {
         setRecentes([]);
       }
     } catch (e) { aoAvisar(String((e as Error).message)); }
-  }, [busca, pastaAtiva, aoAvisar]);
+  }, [busca, pasta, ordem, recursivo, aoAvisar]);
 
   useEffect(() => {
     const id = window.setTimeout(carregar, busca ? 250 : 0);
@@ -70,10 +91,22 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     finally { setOcupado(false); }
   };
 
-  const abrirArquivo = async () => {
-    const p = await window.revisor?.escolherArquivo();
-    if (p) aoAbrir(p);
-  };
+  // Trilha de navegação: a raiz registrada, e depois cada nível abaixo dela.
+  const trilha = useMemo(() => {
+    if (!pasta) return [];
+    const raiz = raizes.find((r) => pasta.startsWith(r.caminho));
+    if (!raiz) return [{ nome: ultimoTrecho(pasta), caminho: pasta }];
+    const passos = [{ nome: ultimoTrecho(raiz.caminho), caminho: raiz.caminho }];
+    const resto = pasta.slice(raiz.caminho.length).replace(/^[\\/]+/, '');
+    let acumulado = raiz.caminho.replace(/[\\/]+$/, '');
+    for (const parte of resto.split(/[\\/]/).filter(Boolean)) {
+      acumulado += `\\${parte}`;
+      passos.push({ nome: parte, caminho: acumulado });
+    }
+    return passos;
+  }, [pasta, raizes]);
+
+  const semNada = raizes.length === 0;
 
   return (
     <div className="inicio">
@@ -86,40 +119,75 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
           onChange={(e) => setBusca(e.target.value)}
         />
         <div className="inicio-acoes">
-          <button onClick={revarrer} disabled={ocupado || !pastas.length} title="Reler as pastas">
+          <button onClick={revarrer} disabled={ocupado || semNada} title="Reler as pastas">
             Atualizar
           </button>
           <button onClick={adicionarPasta} disabled={ocupado}>Adicionar pasta…</button>
           {noElectron() && (
-            <button className="primario" onClick={abrirArquivo}>Abrir arquivo(s)</button>
+            <button
+              className="primario"
+              onClick={async () => {
+                const p = await window.revisor?.escolherArquivo();
+                if (p) aoAbrir(p);
+              }}
+            >Abrir arquivo(s)</button>
           )}
         </div>
       </header>
 
-      {pastas.length > 0 && (
-        <div className="inicio-pastas">
-          <button
-            className={`chip ${pastaAtiva === '' ? 'on' : ''}`}
-            onClick={() => setPastaAtiva('')}
-          >Tudo ({contagem.total})</button>
-          {pastas.map((p) => (
-            <span key={p.caminho} className="chip-pasta">
-              <button
-                className={`chip ${pastaAtiva === p.caminho ? 'on' : ''}`}
-                onClick={() => setPastaAtiva(pastaAtiva === p.caminho ? '' : p.caminho)}
-                title={p.caminho}
-              >{p.caminho.split(/[\\/]/).filter(Boolean).pop()}</button>
-              <button
-                className="chip-x"
-                title="Tirar esta pasta da biblioteca (não apaga nada do disco)"
-                onClick={async () => { await api.removerPasta(p.caminho); carregar(); }}
-              >✕</button>
-            </span>
-          ))}
+      {!semNada && (
+        <div className="inicio-barra">
+          <nav className="trilha">
+            <button className={pasta ? '' : 'on'} onClick={() => setPasta('')}>
+              Tudo <small>({contagem.total})</small>
+            </button>
+            {!pasta && raizes.map((r) => (
+              <span key={r.caminho} className="trilha-raiz">
+                <button onClick={() => setPasta(r.caminho)} title={r.caminho}>
+                  {ultimoTrecho(r.caminho)}
+                </button>
+                <button
+                  className="trilha-x"
+                  title="Tirar da biblioteca (não apaga nada do disco)"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await api.removerPasta(r.caminho);
+                    carregar();
+                  }}
+                >✕</button>
+              </span>
+            ))}
+            {trilha.map((p, i) => (
+              <span key={p.caminho} className="trilha-passo">
+                <span className="trilha-sep">›</span>
+                <button
+                  className={i === trilha.length - 1 ? 'on' : ''}
+                  onClick={() => setPasta(p.caminho)}
+                  title={p.caminho}
+                >{p.nome}</button>
+              </span>
+            ))}
+          </nav>
+
+          <div className="inicio-controles">
+            {pasta && subpastas.length > 0 && (
+              <label className="alternador" title="Mostrar também o que está nas subpastas">
+                <input
+                  type="checkbox"
+                  checked={recursivo}
+                  onChange={(e) => setRecursivo(e.target.checked)}
+                />
+                incluir subpastas
+              </label>
+            )}
+            <select value={ordem} onChange={(e) => setOrdem(e.target.value)} title="Ordenar por">
+              {ORDENS.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+            </select>
+          </div>
         </div>
       )}
 
-      {pastas.length === 0 && (
+      {semNada && (
         <div className="inicio-vazio">
           <p>Nenhuma pasta na biblioteca ainda.</p>
           <p className="detalhe">
@@ -139,20 +207,45 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         </section>
       )}
 
+      {subpastas.length > 0 && !busca && (
+        <section>
+          <h2>Pastas <small>{subpastas.length}</small></h2>
+          <div className="grade-pastas">
+            {subpastas.map((s) => (
+              <button key={s.caminho} className="cartao-pasta" onClick={() => setPasta(s.caminho)}>
+                <span className="cartao-pasta-icone">📁</span>
+                <span className="cartao-pasta-nome" title={s.caminho}>{s.nome}</span>
+                <span className="cartao-pasta-n">{s.arquivos}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {itens.length > 0 && (
         <section>
           <h2>
             {busca ? `Resultados para "${busca}"`
-              : pastaAtiva ? pastaAtiva.split(/[\\/]/).filter(Boolean).pop()
+              : pasta ? (recursivo ? `${ultimoTrecho(pasta)} e subpastas` : ultimoTrecho(pasta))
                 : 'Tudo'}
-            <small>{itens.length} de {contagem.total}</small>
+            <small>
+              {itens.length}
+              {!busca && !pasta && ` de ${contagem.total}`}
+              {pasta && !recursivo && diretos > itens.length && ` de ${diretos}`}
+            </small>
           </h2>
           <Grade itens={itens} aoAbrir={aoAbrir} />
         </section>
       )}
 
-      {pastas.length > 0 && itens.length === 0 && (
-        <p className="vazio">nada encontrado</p>
+      {!semNada && itens.length === 0 && subpastas.length === 0 && (
+        <p className="vazio">{busca ? 'nada encontrado' : 'pasta vazia'}</p>
+      )}
+
+      {!semNada && itens.length === 0 && subpastas.length > 0 && !busca && (
+        <p className="vazio">
+          nenhum arquivo direto nesta pasta — o conteúdo está nas subpastas acima
+        </p>
       )}
     </div>
   );
@@ -183,6 +276,8 @@ function Cartao({ midia, aoAbrir }: { midia: Midia; aoAbrir: (c: string) => void
     return () => obs.disconnect();
   }, [visivel]);
 
+  useEffect(() => { setInfo(midia); setFalhou(false); }, [midia]);
+
   useEffect(() => {
     if (!visivel || info.sondado) return;
     let vivo = true;
@@ -190,8 +285,7 @@ function Cartao({ midia, aoAbrir }: { midia: Midia; aoAbrir: (c: string) => void
     return () => { vivo = false; };
   }, [visivel, info.sondado, midia.id]);
 
-  const dur = useMemo(
-    () => (info.duracao ? duracaoCurta(info.duracao) : null), [info.duracao]);
+  const dur = info.duracao ? duracaoCurta(info.duracao) : null;
 
   return (
     <button

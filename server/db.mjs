@@ -353,23 +353,68 @@ export const marcarVisto = (caminho) =>
 export const marcarAusentes = (pasta) =>
   handle().prepare('UPDATE biblioteca SET ausente=1 WHERE pasta LIKE ?').run(`${pasta}%`);
 
-/** Grade da inicial. `ordem` decide a secao: recentes, novos ou alfabetico. */
-export function listarMidia({ q = '', pasta = '', ordem = 'modificado', limite = 120, offset = 0 } = {}) {
+/**
+ * Grade da inicial.
+ *
+ * `recursivo: false` mostra so os arquivos DIRETAMENTE na pasta — e o que faz
+ * navegar por pastas significar alguma coisa. Com `true`, tudo que estiver
+ * abaixo dela entra junto.
+ */
+export function listarMidia({
+  q = '', pasta = '', ordem = 'modificado', limite = 120, offset = 0, recursivo = true,
+} = {}) {
   const cond = ['ausente = 0'];
   const args = [];
   if (q) { cond.push('nome LIKE ?'); args.push(`%${q}%`); }
-  if (pasta) { cond.push('pasta LIKE ?'); args.push(`${pasta}%`); }
+  if (pasta) {
+    if (recursivo) { cond.push('pasta LIKE ?'); args.push(`${pasta}%`); }
+    else { cond.push('pasta = ?'); args.push(pasta); }
+  }
   if (ordem === 'vistos') cond.push('visto_em IS NOT NULL');
 
   const ordenar = {
     vistos: 'visto_em DESC',
     modificado: 'modificado DESC',
+    antigos: 'modificado ASC',
     nome: 'nome COLLATE NOCASE',
+    duracao: 'duracao DESC NULLS LAST',
+    tamanho: 'tamanho DESC',
   }[ordem] ?? 'modificado DESC';
 
   args.push(limite, offset);
   return handle().prepare(`SELECT * FROM biblioteca WHERE ${cond.join(' AND ')}
     ORDER BY ${ordenar} LIMIT ? OFFSET ?`).all(...args);
+}
+
+/**
+ * Subpastas imediatas de um caminho, com quantos arquivos cada uma guarda
+ * (contando o que esta aninhado mais fundo).
+ *
+ * Sai do proprio catalogo, sem tocar o disco: a tabela ja sabe a pasta de cada
+ * arquivo, entao e so agrupar pelo primeiro trecho do caminho relativo.
+ */
+export function subpastasDe(base, sep = '\\') {
+  const linhas = handle().prepare(
+    `SELECT pasta, COUNT(*) AS n FROM biblioteca
+     WHERE ausente = 0 AND pasta LIKE ? GROUP BY pasta`).all(`${base}%`);
+
+  const filhas = new Map();
+  let diretos = 0;
+  for (const l of linhas) {
+    if (l.pasta === base) { diretos = Number(l.n); continue; }
+    const rel = l.pasta.slice(base.length).replace(/^[\\/]+/, '');
+    if (!rel) { diretos = Number(l.n); continue; }
+    const primeiro = rel.split(/[\\/]/)[0];
+    const caminho = base.replace(/[\\/]+$/, '') + sep + primeiro;
+    filhas.set(caminho, (filhas.get(caminho) ?? 0) + Number(l.n));
+  }
+
+  return {
+    diretos,
+    subpastas: [...filhas.entries()]
+      .map(([caminho, arquivos]) => ({ caminho, nome: caminho.split(/[\\/]/).pop(), arquivos }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+  };
 }
 
 export function contarMidia() {

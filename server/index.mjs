@@ -298,14 +298,23 @@ app.get('/api/sources/:id/segmento', rota(async (req, res) => {
 // ------------------------------------------------------------ biblioteca
 
 app.get('/api/biblioteca', rota((req, res) => {
+  const pasta = String(req.query.pasta || '');
+  // Buscar é sempre recursivo: procurar um nome e não achar porque o arquivo
+  // está uma pasta abaixo seria uma armadilha.
+  const q = String(req.query.q || '');
+  const recursivo = q ? true : req.query.recursivo !== '0';
+
   res.json({
     itens: db.listarMidia({
-      q: String(req.query.q || ''),
-      pasta: String(req.query.pasta || ''),
+      q,
+      pasta,
+      recursivo,
       ordem: String(req.query.ordem || 'modificado'),
       limite: Math.min(400, Number(req.query.limite) || 120),
       offset: Number(req.query.offset) || 0,
     }),
+    // Só faz sentido listar subpastas quando se está dentro de uma pasta.
+    ...(pasta ? db.subpastasDe(pasta, path.sep) : { subpastas: [], diretos: 0 }),
     contagem: db.contarMidia(),
     pastas: db.listarPastas(),
   });
