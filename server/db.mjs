@@ -87,11 +87,24 @@ CREATE TABLE IF NOT EXISTS biblioteca (
   sondado    INTEGER NOT NULL DEFAULT 0, -- ja passou pelo ffprobe?
   ausente    INTEGER NOT NULL DEFAULT 0, -- sumiu do disco na ultima varredura
   visto_em   TEXT,                       -- ultima vez aberto no app
+  favorito   INTEGER NOT NULL DEFAULT 0,
+  revisado   INTEGER NOT NULL DEFAULT 0,
   criado_em  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_bib_pasta ON biblioteca(pasta, nome);
 CREATE INDEX IF NOT EXISTS idx_bib_visto ON biblioteca(visto_em DESC);
 CREATE INDEX IF NOT EXISTS idx_bib_mod ON biblioteca(modificado DESC);
+
+-- Historico de operacoes que mexeram em disco, pra poder desfazer o ultimo lote.
+-- Mover e renomear sao as unicas coisas que este app faz nos SEUS arquivos;
+-- fazer isso sem volta seria irresponsavel.
+CREATE TABLE IF NOT EXISTS operacoes (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo     TEXT NOT NULL,
+  quando   TEXT NOT NULL DEFAULT (datetime('now')),
+  desfeita INTEGER NOT NULL DEFAULT 0,
+  passos   TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS transcricao (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,6 +164,8 @@ const MIGRACOES = [
   ['tracks', 'transc_progresso', 'REAL NOT NULL DEFAULT 0'],
   ['tracks', 'transc_erro', 'TEXT'],
   ['tracks', 'idioma', 'TEXT'],
+  ['biblioteca', 'favorito', 'INTEGER NOT NULL DEFAULT 0'],
+  ['biblioteca', 'revisado', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 
 function migrar(d) {
@@ -169,6 +184,12 @@ export function open(file) {
   migrar(db);
   dbFile = file;
   return db;
+}
+
+/** Fecha o banco. O WAL segura arquivos abertos; sem isto, apagar o diretorio
+ *  do projeto falha com EBUSY no Windows. */
+export function fechar() {
+  if (db) { db.close(); db = null; }
 }
 
 export function handle() {
@@ -347,6 +368,41 @@ export function setSondagem(id, s) {
 export const setPoster = (id, caminho) =>
   handle().prepare('UPDATE biblioteca SET poster=? WHERE id=?').run(caminho, id);
 
+export function setSinalizador(id, campo, valor) {
+  if (campo !== 'favorito' && campo !== 'revisado') throw new Error('campo invalido');
+  handle().prepare(`UPDATE biblioteca SET ${campo}=? WHERE id=?`).run(valor ? 1 : 0, id);
+  return getMidia(id);
+}
+
+/**
+ * Registra que um arquivo mudou de lugar ou de nome.
+ *
+ * Atualiza a biblioteca E a tabela sources: se o arquivo ja foi aberto pra
+ * revisao, o caminho guardado la apontaria pro vazio depois da mudanca, e o
+ * proxy, os marcadores e a transcricao ficariam orfaos de um arquivo que existe.
+ */
+export function reapontarArquivo(deCaminho, paraCaminho) {
+  const d = handle();
+  const pasta = path.dirname(paraCaminho);
+  const nome = path.parse(paraCaminho).name;
+  d.prepare('UPDATE biblioteca SET caminho=?, pasta=?, nome=? WHERE caminho=?')
+    .run(paraCaminho, pasta, nome, deCaminho);
+  d.prepare('UPDATE sources SET path=?, name=? WHERE path=?')
+    .run(paraCaminho, path.basename(paraCaminho), deCaminho);
+}
+
+export function registrarOperacao(tipo, passos) {
+  const r = handle().prepare('INSERT INTO operacoes (tipo, passos) VALUES (?,?)')
+    .run(tipo, JSON.stringify(passos));
+  return rid(r);
+}
+
+export const ultimaOperacao = () =>
+  handle().prepare('SELECT * FROM operacoes WHERE desfeita=0 ORDER BY id DESC LIMIT 1').get();
+
+export const marcarDesfeita = (id) =>
+  handle().prepare('UPDATE operacoes SET desfeita=1 WHERE id=?').run(id);
+
 export const marcarVisto = (caminho) =>
   handle().prepare("UPDATE biblioteca SET visto_em=datetime('now') WHERE caminho=?").run(caminho);
 
@@ -362,9 +418,13 @@ export const marcarAusentes = (pasta) =>
  */
 export function listarMidia({
   q = '', pasta = '', ordem = 'modificado', limite = 120, offset = 0, recursivo = true,
+  filtro = '',
 } = {}) {
   const cond = ['ausente = 0'];
   const args = [];
+  if (filtro === 'favoritos') cond.push('favorito = 1');
+  if (filtro === 'naoRevisados') cond.push('revisado = 0');
+  if (filtro === 'revisados') cond.push('revisado = 1');
   if (q) { cond.push('nome LIKE ?'); args.push(`%${q}%`); }
   if (pasta) {
     if (recursivo) { cond.push('pasta LIKE ?'); args.push(`${pasta}%`); }

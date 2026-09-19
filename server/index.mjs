@@ -310,6 +310,7 @@ app.get('/api/biblioteca', rota((req, res) => {
       pasta,
       recursivo,
       ordem: String(req.query.ordem || 'modificado'),
+      filtro: String(req.query.filtro || ''),
       limite: Math.min(400, Number(req.query.limite) || 120),
       offset: Number(req.query.offset) || 0,
     }),
@@ -348,6 +349,57 @@ app.post('/api/biblioteca/varrer', rota(async (req, res) => {
   res.json({ ok: true, total });
 }));
 
+// ------------------------------------------- organizar (mexe em disco)
+//
+// Tudo aqui é em duas etapas: primeiro um PLANO, que não toca em nada e mostra
+// o antes/depois, e só depois a aplicação. E todo lote aplicado fica no
+// histórico, pra poder voltar atrás.
+
+app.post('/api/biblioteca/plano/mover', rota((req, res) => {
+  const ids = (req.body?.ids || []).map(Number).filter(Boolean);
+  const destino = String(req.body?.destino || '');
+  if (!ids.length || !destino) return res.status(400).json({ erro: 'informe ids e destino' });
+  res.json({ passos: biblioteca.planejarMover(ids, destino) });
+}));
+
+app.post('/api/biblioteca/plano/renomear', rota((req, res) => {
+  const ids = (req.body?.ids || []).map(Number).filter(Boolean);
+  const padrao = String(req.body?.padrao || '');
+  if (!ids.length || !padrao) return res.status(400).json({ erro: 'informe ids e padrão' });
+  res.json({ passos: biblioteca.planejarRenomear(ids, padrao, { inicio: Number(req.body?.inicio) || 1 }) });
+}));
+
+app.post('/api/biblioteca/aplicar', rota(async (req, res) => {
+  const tipo = String(req.body?.tipo || '');
+  const passos = req.body?.passos || [];
+  if (!['mover', 'renomear'].includes(tipo)) return res.status(400).json({ erro: 'tipo inválido' });
+  if (!Array.isArray(passos) || !passos.length) return res.status(400).json({ erro: 'nada a aplicar' });
+  res.json(await biblioteca.aplicarLote(tipo, passos));
+}));
+
+app.post('/api/biblioteca/desfazer', rota(async (req, res) => {
+  res.json(await biblioteca.desfazerUltimo());
+}));
+
+app.get('/api/biblioteca/desfazer', rota((req, res) => {
+  const op = db.ultimaOperacao();
+  res.json({ pode: !!op, tipo: op?.tipo ?? null, quantos: op ? JSON.parse(op.passos).length : 0 });
+}));
+
+app.post('/api/biblioteca/nova-pasta', rota(async (req, res) => {
+  const pai = String(req.body?.pai || '');
+  const nome = String(req.body?.nome || '');
+  if (!pai || !nome.trim()) return res.status(400).json({ erro: 'informe pai e nome' });
+  res.json({ ok: true, pasta: await biblioteca.criarPasta(pai, nome) });
+}));
+
+app.patch('/api/biblioteca/:id/marca', rota((req, res) => {
+  const campo = String(req.body?.campo || '');
+  const m = db.setSinalizador(Number(req.params.id), campo, !!req.body?.valor);
+  if (!m) return res.status(404).json({ erro: 'não encontrado' });
+  res.json(m);
+}));
+
 /** Metadados sob demanda — o cartão pede quando entra na tela. */
 app.get('/api/biblioteca/:id/info', rota(async (req, res) => {
   const m = await biblioteca.sondar(Number(req.params.id));
@@ -357,7 +409,15 @@ app.get('/api/biblioteca/:id/info', rota(async (req, res) => {
 
 /** Miniatura; gera na primeira vez que alguém pede. */
 app.get('/api/biblioteca/:id/poster', rota(async (req, res) => {
-  const arquivo = await biblioteca.poster(Number(req.params.id));
+  let arquivo = null;
+  try {
+    arquivo = await biblioteca.poster(Number(req.params.id));
+  } catch {
+    // Arquivo vazio, truncado ou com codec que o ffmpeg não abre: não ter
+    // miniatura é um fato sobre o arquivo, não uma falha do servidor. O cartão
+    // cai no ícone e a vida segue — e o log não vira uma pilha de stack traces.
+    arquivo = null;
+  }
   if (!arquivo) return res.status(404).json({ erro: 'sem miniatura' });
   res.setHeader('Cache-Control', 'public, max-age=86400');
   servirArquivo(res, arquivo, 'image/jpeg');

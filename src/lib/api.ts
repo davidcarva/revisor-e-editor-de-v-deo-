@@ -90,11 +90,21 @@ export type Midia = {
   poster: string | null;
   sondado: number;
   visto_em: string | null;
+  favorito: number;
+  revisado: number;
 };
 
 export type Pasta = { caminho: string; adicionada: string };
 
 export type Subpasta = { caminho: string; nome: string; arquivos: number };
+
+export type PassoPlano = {
+  id: number;
+  origem: string;
+  destino: string;
+  nome: string;
+  novoNome?: string;
+};
 
 export type ItemArquivo = { nome: string; dir: boolean; caminho: string; size: number };
 
@@ -168,6 +178,7 @@ export const api = {
 
   biblioteca: (p: {
     q?: string; pasta?: string; ordem?: string; limite?: number; recursivo?: boolean;
+    filtro?: string;
   } = {}) =>
     pedir<{
       itens: Midia[];
@@ -182,6 +193,24 @@ export const api = {
           // "false" passaria no teste como se fosse verdadeiro.
           .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v)]),
       )}`),
+  // --- organizar: mexe nos arquivos de verdade, sempre via plano + confirmação
+  planoMover: (ids: number[], destino: string) =>
+    pedir<{ passos: PassoPlano[] }>('/api/biblioteca/plano/mover', json('POST', { ids, destino })),
+  planoRenomear: (ids: number[], padrao: string, inicio = 1) =>
+    pedir<{ passos: PassoPlano[] }>('/api/biblioteca/plano/renomear', json('POST', { ids, padrao, inicio })),
+  aplicarLote: (tipo: 'mover' | 'renomear', passos: PassoPlano[]) =>
+    pedir<{ feitos: PassoPlano[]; erros: { id: number; erro: string }[] }>(
+      '/api/biblioteca/aplicar', json('POST', { tipo, passos })),
+  podeDesfazer: () =>
+    pedir<{ pode: boolean; tipo: string | null; quantos: number }>('/api/biblioteca/desfazer'),
+  desfazer: () =>
+    pedir<{ nada?: boolean; voltaram: unknown[]; erros: unknown[] }>(
+      '/api/biblioteca/desfazer', json('POST')),
+  novaPasta: (pai: string, nome: string) =>
+    pedir<{ pasta: string }>('/api/biblioteca/nova-pasta', json('POST', { pai, nome })),
+  marcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) =>
+    pedir<Midia>(`/api/biblioteca/${id}/marca`, json('PATCH', { campo, valor })),
+
   adicionarPasta: (caminho: string) =>
     pedir<{ achados: number; pasta: string }>('/api/biblioteca/pastas', json('POST', { caminho })),
   removerPasta: (caminho: string) =>

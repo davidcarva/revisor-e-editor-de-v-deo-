@@ -12,7 +12,7 @@
     "icone": "node scripts/gerar-icone.mjs",
     "app": "npm run build && electron electron/main.mjs",
     "atalho": "node scripts/criar-atalho.mjs",
-    "teste": "node server/_test-xml.mjs && node server/_test-pipeline.mjs",
+    "teste": "node server/_test-xml.mjs && node scripts/_test-organizar.mjs",
     "transcricao:instalar": "python -m venv .venv-whisper && .venv-whisper\\Scripts\\python.exe -m pip install --upgrade pip && .venv-whisper\\Scripts\\python.exe -m pip install \"faster-whisper>=1.1.0\" nvidia-cublas-cu12 nvidia-cudnn-cu12"
   },
   "dependencies": {

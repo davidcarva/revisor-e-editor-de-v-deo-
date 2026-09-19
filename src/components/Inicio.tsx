@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/api';
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
+import { BarraSelecao } from './Organizar';
 
 const tamanhoCurto = (n: number) =>
   (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`);
@@ -38,11 +39,14 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [recursivo, setRecursivo] = useState(false);
   const [ordem, setOrdem] = useState('modificado');
   const [ocupado, setOcupado] = useState(false);
+  const [filtro, setFiltro] = useState('');
+  const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const ultimoClique = useRef<number | null>(null);
 
   const carregar = useCallback(async () => {
     try {
       const r = await api.biblioteca({
-        q: busca, pasta, ordem, limite: 300,
+        q: busca, pasta, ordem, filtro, limite: 300,
         // Sem pasta escolhida a grade é o acervo inteiro; aí recursivo é o único
         // sentido possível.
         recursivo: pasta ? recursivo : true,
@@ -61,7 +65,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         setRecentes([]);
       }
     } catch (e) { aoAvisar(String((e as Error).message)); }
-  }, [busca, pasta, ordem, recursivo, aoAvisar]);
+  }, [busca, pasta, ordem, filtro, recursivo, aoAvisar]);
 
   useEffect(() => {
     const id = window.setTimeout(carregar, busca ? 250 : 0);
@@ -105,6 +109,38 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     }
     return passos;
   }, [pasta, raizes]);
+
+  // Shift+clique seleciona o intervalo entre o último clique e este, na ordem
+  // em que os cartões estão na tela.
+  const selecionar = (id: number, e: React.MouseEvent) => {
+    setSelecao((atual) => {
+      const nova = new Set(atual);
+      if (e.shiftKey && ultimoClique.current != null) {
+        const ordemVisivel = itens.map((m) => m.id);
+        const a = ordemVisivel.indexOf(ultimoClique.current);
+        const b = ordemVisivel.indexOf(id);
+        if (a >= 0 && b >= 0) {
+          for (let i = Math.min(a, b); i <= Math.max(a, b); i++) nova.add(ordemVisivel[i]);
+          return nova;
+        }
+      }
+      if (nova.has(id)) nova.delete(id); else nova.add(id);
+      return nova;
+    });
+    ultimoClique.current = id;
+  };
+
+  const marcarUm = async (id: number, campo: 'favorito' | 'revisado', valor: boolean) => {
+    try { await api.marcar(id, campo, valor); await carregar(); }
+    catch (err) { aoAvisar(String((err as Error).message)); }
+  };
+
+  // Esc limpa a seleção: é a saída óbvia quando se entra nela sem querer.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelecao(new Set()); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, []);
 
   const semNada = raizes.length === 0;
 
@@ -180,6 +216,12 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
                 incluir subpastas
               </label>
             )}
+            <select value={filtro} onChange={(e) => setFiltro(e.target.value)} title="Filtrar">
+              <option value="">Todos</option>
+              <option value="favoritos">★ Favoritos</option>
+              <option value="naoRevisados">Ainda não revisados</option>
+              <option value="revisados">Já revisados</option>
+            </select>
             <select value={ordem} onChange={(e) => setOrdem(e.target.value)} title="Ordenar por">
               {ORDENS.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
             </select>
@@ -200,10 +242,21 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         </div>
       )}
 
+      {selecao.size > 0 && (
+        <BarraSelecao
+          ids={[...selecao]}
+          pastaAtual={pasta}
+          subpastas={subpastas}
+          aoAvisar={aoAvisar}
+          aoLimpar={() => setSelecao(new Set())}
+          aoTerminar={async (msg) => { aoAvisar(msg); setSelecao(new Set()); await carregar(); }}
+        />
+      )}
+
       {recentes.length > 0 && (
         <section>
           <h2>Mídia recente</h2>
-          <Grade itens={recentes} aoAbrir={aoAbrir} />
+          <Grade itens={recentes} aoAbrir={aoAbrir} selecao={selecao} aoSelecionar={selecionar} aoMarcar={marcarUm} />
         </section>
       )}
 
@@ -234,7 +287,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               {pasta && !recursivo && diretos > itens.length && ` de ${diretos}`}
             </small>
           </h2>
-          <Grade itens={itens} aoAbrir={aoAbrir} />
+          <Grade itens={itens} aoAbrir={aoAbrir} selecao={selecao} aoSelecionar={selecionar} aoMarcar={marcarUm} />
         </section>
       )}
 
@@ -251,15 +304,42 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   );
 }
 
-function Grade({ itens, aoAbrir }: { itens: Midia[]; aoAbrir: (c: string) => void }) {
+type PropsGrade = {
+  itens: Midia[];
+  aoAbrir: (c: string) => void;
+  selecao: Set<number>;
+  aoSelecionar: (id: number, e: React.MouseEvent) => void;
+  aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
+};
+
+function Grade({ itens, aoAbrir, selecao, aoSelecionar, aoMarcar }: PropsGrade) {
   return (
     <div className="grade">
-      {itens.map((m) => <Cartao key={m.id} midia={m} aoAbrir={aoAbrir} />)}
+      {itens.map((m) => (
+        <Cartao
+          key={m.id}
+          midia={m}
+          aoAbrir={aoAbrir}
+          selecionado={selecao.has(m.id)}
+          modoSelecao={selecao.size > 0}
+          aoSelecionar={aoSelecionar}
+          aoMarcar={aoMarcar}
+        />
+      ))}
     </div>
   );
 }
 
-function Cartao({ midia, aoAbrir }: { midia: Midia; aoAbrir: (c: string) => void }) {
+type PropsCartao = {
+  midia: Midia;
+  aoAbrir: (c: string) => void;
+  selecionado: boolean;
+  modoSelecao: boolean;
+  aoSelecionar: (id: number, e: React.MouseEvent) => void;
+  aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
+};
+
+function Cartao({ midia, aoAbrir, selecionado, modoSelecao, aoSelecionar, aoMarcar }: PropsCartao) {
   const [visivel, setVisivel] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [info, setInfo] = useState<Midia>(midia);
@@ -288,26 +368,58 @@ function Cartao({ midia, aoAbrir }: { midia: Midia; aoAbrir: (c: string) => void
   const dur = info.duracao ? duracaoCurta(info.duracao) : null;
 
   return (
-    <button
-      ref={ref}
-      className="cartao"
-      onClick={() => aoAbrir(midia.caminho)}
+    <div
+      className={`cartao ${selecionado ? 'sel' : ''} ${midia.revisado ? 'revisto' : ''}`}
       title={`${midia.caminho}\n${tamanhoCurto(midia.tamanho)}`}
     >
-      <div className={`cartao-arte ${midia.tipo}`}>
-        {midia.tipo === 'video' && visivel && !falhou ? (
-          <img src={urlPoster(midia.id)} alt="" loading="lazy" onError={() => setFalhou(true)} />
-        ) : (
-          <span className="cartao-icone">{midia.tipo === 'audio' ? '♪' : '🎬'}</span>
-        )}
-        {dur && <span className="cartao-dur">{dur}</span>}
-        {(info.faixas_audio ?? 0) > 1 && (
-          <span className="cartao-faixas" title={`${info.faixas_audio} faixas de áudio`}>
-            {info.faixas_audio} faixas
-          </span>
-        )}
-      </div>
-      <div className="cartao-nome">{midia.nome}</div>
-    </button>
+      <button
+        ref={ref}
+        className="cartao-alvo"
+        // Com algo selecionado, o clique simples passa a selecionar: ficar
+        // segurando Ctrl pra cada arquivo de um lote de trinta é tortura.
+        onClick={(e) => {
+          if (modoSelecao || e.ctrlKey || e.metaKey || e.shiftKey) aoSelecionar(midia.id, e);
+          else aoAbrir(midia.caminho);
+        }}
+        onDoubleClick={() => aoAbrir(midia.caminho)}
+      >
+        <div className={`cartao-arte ${midia.tipo}`}>
+          {midia.tipo === 'video' && visivel && !falhou ? (
+            <img src={urlPoster(midia.id)} alt="" loading="lazy" onError={() => setFalhou(true)} />
+          ) : (
+            <span className="cartao-icone">{midia.tipo === 'audio' ? '♪' : '🎬'}</span>
+          )}
+          {dur && <span className="cartao-dur">{dur}</span>}
+          {(info.faixas_audio ?? 0) > 1 && (
+            <span className="cartao-faixas" title={`${info.faixas_audio} faixas de áudio`}>
+              {info.faixas_audio} faixas
+            </span>
+          )}
+          {midia.revisado > 0 && <span className="cartao-revisto" title="já revisado">✓</span>}
+        </div>
+        <div className="cartao-nome">{midia.nome}</div>
+      </button>
+
+      <span
+        className={`cartao-caixa ${selecionado ? 'on' : ''}`}
+        role="checkbox"
+        aria-checked={selecionado}
+        aria-label={`Selecionar ${midia.nome}`}
+        tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); aoSelecionar(midia.id, e); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            aoSelecionar(midia.id, e as unknown as React.MouseEvent);
+          }
+        }}
+      >{selecionado ? '✓' : ''}</span>
+
+      <button
+        className={`cartao-estrela ${midia.favorito ? 'on' : ''}`}
+        title={midia.favorito ? 'Tirar dos favoritos' : 'Favoritar'}
+        onClick={(e) => { e.stopPropagation(); aoMarcar(midia.id, 'favorito', !midia.favorito); }}
+      >{midia.favorito ? '★' : '☆'}</button>
+    </div>
   );
 }
