@@ -18,7 +18,10 @@ import * as db from './db.mjs';
 
 export const events = new EventEmitter();
 
-const PROXY_HEIGHT = 540;
+// Níveis de qualidade, como divisores da altura original. O arquivo original
+// é sempre o nível 1 e não precisa ser gerado.
+export const NIVEIS = { metade: 2, quarto: 4 };
+export const arquivoDoNivel = (dir, divisor) => path.join(dir, `proxy-${divisor}.mp4`);
 const THUMB_WIDTH = 160;
 const THUMB_COLS = 10;
 const THUMB_ROWS = 10;
@@ -114,6 +117,64 @@ export function cancel(sourceId) {
   jobs.get(sourceId)?.cancel();
 }
 
+/**
+ * Adota um `proxy.mp4` do esquema antigo como nível "metade".
+ *
+ * Antes existia um proxy só, fixo em 540p. Num arquivo 1080p isso é exatamente
+ * metade, então renomear é honesto; em qualquer outra resolução não é, e aí o
+ * arquivo antigo é ignorado em vez de mentir sobre a qualidade que entrega.
+ */
+export function adotarProxyAntigo(sourceId) {
+  const src = db.getSource(sourceId);
+  if (!src?.height) return false;
+  const dir = path.join(CACHE_ROOT, String(sourceId));
+  const antigo = path.join(dir, 'proxy.mp4');
+  const novo = arquivoDoNivel(dir, NIVEIS.metade);
+  if (!fs.existsSync(antigo) || fs.existsSync(novo)) return false;
+  if (Math.abs(540 - src.height / 2) > 10) return false;
+  fs.renameSync(antigo, novo);
+  db.setSourceAssets(sourceId, { proxy_path: novo });
+  return true;
+}
+
+/** Caminho de um nível, se ele já existe em disco. */
+export function nivelPronto(sourceId, divisor) {
+  const arq = arquivoDoNivel(path.join(CACHE_ROOT, String(sourceId)), divisor);
+  return fs.existsSync(arq) ? arq : null;
+}
+
+const gerando = new Map();   // `${id}:${divisor}` -> Promise
+export const gerandoNivel = (sourceId, divisor) => gerando.has(`${sourceId}:${divisor}`);
+
+/**
+ * Gera um nível de qualidade sob demanda, sem miniaturas — elas já existem e
+ * não dependem da resolução do vídeo.
+ */
+export function gerarNivel(sourceId, divisor) {
+  const chave = `${sourceId}:${divisor}`;
+  if (gerando.has(chave)) return gerando.get(chave);
+
+  const src = db.getSource(sourceId);
+  if (!src) throw new Error('fonte não encontrada');
+  const dir = path.join(CACHE_ROOT, String(sourceId));
+
+  const ctl = { children: new Set(), cancelled: false };
+  const tarefa = (async () => {
+    await fsp.mkdir(dir, { recursive: true });
+    report(sourceId, { status: 'processando', stage: `qualidade ${divisor}`, progress: 0 });
+    await buildProxy(src, dir, ctl, divisor, (p) => {
+      report(sourceId, { status: 'processando', stage: `qualidade ${divisor}`, progress: p });
+    });
+    // O `stage` sobrevive ao fim de proposito: e por ele que o cliente sabe que
+    // o que ficou pronto foi um nivel de qualidade, e recarrega o <video>.
+    report(sourceId, { status: 'pronto', progress: 1, stage: `qualidade ${divisor}` });
+    return arquivoDoNivel(dir, divisor);
+  })().finally(() => gerando.delete(chave));
+
+  gerando.set(chave, tarefa);
+  return tarefa;
+}
+
 async function run(sourceId, ctl, force, comVideo) {
   const src = db.getSource(sourceId);
   if (!src) throw new Error('fonte nao encontrada');
@@ -134,7 +195,7 @@ async function run(sourceId, ctl, force, comVideo) {
   const wAudio = 1 - wVideo;
 
   if (hasVideo) {
-    const proxy = path.join(dir, 'proxy.mp4');
+    const proxy = arquivoDoNivel(dir, NIVEIS.metade);
     const thumbsMeta = path.join(dir, 'thumbs.json');
     const done = !force && fs.existsSync(proxy) && fs.existsSync(thumbsMeta);
     if (!done) {
@@ -182,10 +243,38 @@ async function run(sourceId, ctl, force, comVideo) {
  * Proxy + miniaturas numa unica passada. Duas saidas do mesmo -i significa que o
  * ffmpeg decodifica o arquivo uma vez so — em video longo isso e metade do tempo.
  */
-async function buildProxyAndThumbs(src, dir, ctl, onProgress) {
+/** Só o vídeo, num nível de qualidade. Usado quando as miniaturas já existem. */
+async function buildProxy(src, dir, ctl, divisor, onProgress) {
+  const nvenc = await hasNvenc();
+  const fps = src.fps || 30;
+  const gop = Math.max(2, Math.round(fps / 2));
+  const altura = Math.max(2, Math.round((src.height || 1080) / divisor / 2) * 2);
+  const tmp = path.join(dir, `proxy-${divisor}.part.mp4`);
+  const codec = nvenc
+    ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '28', '-b:v', '0']
+    : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26'];
+
+  await runWithProgress([
+    '-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:1',
+    ...(nvenc ? ['-hwaccel', 'cuda'] : []),
+    '-i', src.path,
+    '-map', '0:v:0', '-an',
+    '-vf', `scale=-2:${altura}`,
+    ...codec,
+    '-g', String(gop), '-bf', '0', '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart', '-y', tmp,
+  ], ctl, src.duration_s, onProgress);
+
+  await fsp.rename(tmp, arquivoDoNivel(dir, divisor));
+  return arquivoDoNivel(dir, divisor);
+}
+
+async function buildProxyAndThumbs(src, dir, ctl, onProgress, divisor = 2) {
   const nvenc = await hasNvenc();
   const fps = src.fps || 30;
   const gop = Math.max(2, Math.round(fps / 2));   // keyframe a cada ~0.5s
+  // Altura par: codec de vídeo não aceita dimensão ímpar.
+  const altura = Math.max(2, Math.round((src.height || 1080) / divisor / 2) * 2);
 
   const thumbDir = path.join(dir, 'thumbs');
   await fsp.rm(thumbDir, { recursive: true, force: true });
@@ -196,7 +285,7 @@ async function buildProxyAndThumbs(src, dir, ctl, onProgress) {
     ? Math.max(2, Math.round((THUMB_WIDTH * src.height) / src.width / 2) * 2)
     : 90;
 
-  const proxyTmp = path.join(dir, 'proxy.part.mp4');
+  const proxyTmp = path.join(dir, `proxy-${divisor}.part.mp4`);
   const codecArgs = nvenc
     ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '28', '-b:v', '0']
     : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26'];
@@ -208,7 +297,7 @@ async function buildProxyAndThumbs(src, dir, ctl, onProgress) {
     '-i', src.path,
     // saida 1: proxy de video, sem audio (o audio vem por faixa, isolado)
     '-map', '0:v:0', '-an',
-    '-vf', `scale=-2:${PROXY_HEIGHT}`,
+    '-vf', `scale=-2:${altura}`,
     ...codecArgs,
     '-g', String(gop), '-bf', '0',
     '-pix_fmt', 'yuv420p',
@@ -224,7 +313,7 @@ async function buildProxyAndThumbs(src, dir, ctl, onProgress) {
   await runWithProgress(args, ctl, src.duration_s, onProgress);
   if (ctl.cancelled) throw new Error('cancelado');
 
-  await fsp.rename(proxyTmp, path.join(dir, 'proxy.mp4'));
+  await fsp.rename(proxyTmp, arquivoDoNivel(dir, divisor));
 
   const sheets = (await fsp.readdir(thumbDir)).filter((f) => f.endsWith('.jpg')).sort();
   await fsp.writeFile(path.join(dir, 'thumbs.json'), JSON.stringify({

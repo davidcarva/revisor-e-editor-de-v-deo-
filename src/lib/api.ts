@@ -134,6 +134,11 @@ export const api = {
     pedir<Fonte & { extraindoAudio: boolean }>('/api/assistir', json('POST', { path: caminho })),
   /** Promove para revisão: gera proxy e miniaturas. */
   revisar: (id: number) => pedir(`/api/sources/${id}/revisar`, json('POST')),
+  qualidades: (id: number) =>
+    pedir<{ niveis: NivelQualidade[] }>(`/api/sources/${id}/qualidades`),
+  gerarQualidade: (id: number, nivel: Qualidade) =>
+    pedir<{ gerando?: boolean; jaExistia?: boolean }>(
+      `/api/sources/${id}/qualidades`, json('POST', { nivel })),
 
   fontes: () => pedir<Fonte[]>('/api/sources'),
   fonte: (id: number) => pedir<Fonte>(`/api/sources/${id}`),
@@ -236,6 +241,16 @@ export const api = {
 
 export const urlPoster = (id: number) => `/api/biblioteca/${id}/poster`;
 
+export type Qualidade = 'original' | 'metade' | 'quarto';
+export type NivelQualidade = {
+  nome: Qualidade; divisor: number; altura: number; pronto: boolean; gerando: boolean;
+};
+
+/** O vídeo na qualidade pedida. `original` é o arquivo como foi gravado. */
+export const urlVideo = (id: number, q: Qualidade = 'original') =>
+  `/media/${id}/video?q=${q}`;
+
+/** Proxy leve: a timeline usa este, independente do que o player está tocando. */
 export const urlProxy = (id: number) => `/media/${id}/proxy`;
 
 /**

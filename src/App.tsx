@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador } from './lib/api';
+import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador, type Qualidade } from './lib/api';
 import { Player } from './lib/player';
 import { estaDigitando } from './lib/teclado';
 import { caminhoDoArrasto, sessao } from './lib/sessao';
@@ -9,6 +9,7 @@ import { Timeline } from './components/Timeline';
 import { PainelLog } from './components/PainelLog';
 import { PainelTranscricao } from './components/PainelTranscricao';
 import { Controles } from './components/Controles';
+import { MenuQualidade } from './components/MenuQualidade';
 import { IndicadorTranscricao, estadoDaTranscricao } from './components/IndicadorTranscricao';
 import { baseDoArquivo } from './lib/tempo';
 
@@ -27,6 +28,12 @@ export default function App() {
   const [modo, setModo] = useState<'cinema' | 'estudio'>('cinema');
   const [telaCheia, setTelaCheia] = useState(false);
   const palco = useRef<HTMLDivElement>(null);
+  // Qualidade da reprodução. Original por padrão: o proxy existe pra arrastar a
+  // agulha sem engasgo, não pra ser a única coisa que dá pra assistir.
+  const [qualidade, setQualidade] = useState<Qualidade>('original');
+  // Contador só para forçar o <video> a buscar de novo a MESMA URL.
+  const [recarga, setRecarga] = useState(0);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const player = useMemo(() => new Player(), []);
 
   // Em desenvolvimento, deixa o motor de reprodução acessível pelo console — sem
@@ -79,7 +86,15 @@ export default function App() {
       setFonte((f) => (f && f.id === ev.sourceId
         ? { ...f, status: (ev.status as Fonte['status']) ?? f.status, progress: ev.progress ?? f.progress, stage: ev.stage ?? f.stage }
         : f));
-      if (ev.status === 'pronto' || ev.status === 'erro') recarregarFonte(ev.sourceId);
+      if (ev.status === 'pronto' || ev.status === 'erro') {
+        recarregarFonte(ev.sourceId);
+        // Terminou de gerar a qualidade escolhida. A URL não muda (o servidor
+        // serve o original enquanto o nível não existe), então trocar o estado
+        // não recarregaria nada: quem recarrega é o `load()` lá no visor.
+        if (String(ev.stage || '').startsWith('qualidade')) {
+          setRecarga((n) => n + 1);
+        }
+      }
     }
   }), [atualId, recarregarFonte]);
 
@@ -110,6 +125,7 @@ export default function App() {
       const f = await api.assistir(caminho);
       setAtualId(f.id);
       setModo('cinema');
+      setQualidade('original');
       if (f.extraindoAudio) avisar('separando as faixas de áudio em segundo plano…');
     } catch (e) {
       avisar(`não consegui abrir: ${(e as Error).message}`);
@@ -297,7 +313,13 @@ export default function App() {
     return (
       <div className="app cinema" ref={palco}>
         <div className="cinema-palco">
-          <Visor fonte={fonte} player={player} />
+          <Visor
+            fonte={fonte}
+            player={player}
+            qualidade={qualidade}
+            recarga={recarga}
+            aoPedirMenu={(x, y) => setMenu({ x, y })}
+          />
           {controles}
           <div className="cinema-topo">
             <button
@@ -321,6 +343,17 @@ export default function App() {
             )}
           </div>
         </div>
+        {menu && (
+          <MenuQualidade
+            fonteId={fonte.id}
+            x={menu.x}
+            y={menu.y}
+            atual={qualidade}
+            aoEscolher={setQualidade}
+            aoFechar={() => setMenu(null)}
+            aoAvisar={avisar}
+          />
+        )}
         {aviso && <div className="aviso-flutuante">{aviso}</div>}
       </div>
     );
@@ -363,7 +396,13 @@ export default function App() {
 
       <div className={`area-principal${verTranscricao ? ' com-transcricao' : ''}`}>
         <div className="visor-palco">
-          <Visor fonte={fonte} player={player} />
+          <Visor
+            fonte={fonte}
+            player={player}
+            qualidade={qualidade}
+            recarga={recarga}
+            aoPedirMenu={(x, y) => setMenu({ x, y })}
+          />
           {controles}
         </div>
         <PainelLog
@@ -396,6 +435,17 @@ export default function App() {
         aoMudarFaixa={mudarFaixa}
       />
 
+      {menu && (
+        <MenuQualidade
+          fonteId={fonte.id}
+          x={menu.x}
+          y={menu.y}
+          atual={qualidade}
+          aoEscolher={setQualidade}
+          aoFechar={() => setMenu(null)}
+          aoAvisar={avisar}
+        />
+      )}
       {aviso && <div className="aviso-flutuante">{aviso}</div>}
     </div>
   );

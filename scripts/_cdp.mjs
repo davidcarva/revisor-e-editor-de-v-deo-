@@ -6,6 +6,7 @@
 //
 //   node scripts/_cdp.mjs "expressao js"
 //   node scripts/_cdp.mjs --click ".transporte .principal"
+//   node scripts/_cdp.mjs --rclick "video"
 //
 // Usa o WebSocket embutido do Node 22+; sem dependência nova.
 const PORTA = Number(process.env.CDP_PORT || 9333);
@@ -79,6 +80,24 @@ async function clicar(seletor) {
   return `clicou em ${seletor} (${Math.round(x)}, ${Math.round(y)})`;
 }
 
+/** Clique direito real — o menu de contexto nasce do botão direito de verdade. */
+async function clicarDireito(seletor) {
+  const caixa = await avaliar(`(() => {
+    const el = document.querySelector(${JSON.stringify(seletor)});
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  })()`);
+  if (!caixa) throw new Error(`não achei ${seletor}`);
+  const { x, y } = JSON.parse(caixa);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await enviar('Input.dispatchMouseEvent', {
+      type, x, y, button: 'right', clickCount: 1, buttons: type === 'mousePressed' ? 2 : 0,
+    });
+  }
+  return `botão direito em ${seletor} (${Math.round(x)}, ${Math.round(y)})`;
+}
+
 /** Tecla real via CDP — evento confiavel, como o teclado de verdade. */
 async function teclar(tecla) {
   // Só keyDown (com `text`) e keyUp. Um evento `char` separado insere o caractere
@@ -108,6 +127,7 @@ const args = process.argv.slice(2);
 try {
   if (args[0] === '--shot') console.log(await capturar(args[1] || 'tela.png'));
   else if (args[0] === '--click') console.log(await clicar(args[1]));
+  else if (args[0] === '--rclick') console.log(await clicarDireito(args[1]));
   else if (args[0] === '--key') console.log(await teclar(args[1]));
   else console.log(await avaliar(args.join(' ')));
 } finally {

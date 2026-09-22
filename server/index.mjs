@@ -217,12 +217,59 @@ app.get('/media/direto', rota((req, res) => {
   servirArquivo(res, abs);
 }));
 
+const DIVISOR = { original: 1, metade: 2, quarto: 4 };
+
+/**
+ * O vídeo, na qualidade pedida.
+ *
+ * `original` é o padrão e entrega o arquivo como você gravou. O proxy existe
+ * para arrastar a agulha sem engasgo numa gravação de horas, não para ser a
+ * única coisa que você consegue assistir — era o que acontecia antes, e tornava
+ * impossível ver a própria gravação em 1080p depois de preparar a revisão.
+ */
+app.get('/media/:id/video', rota((req, res) => {
+  const src = exigirFonte(req);
+  const divisor = DIVISOR[String(req.query.q || 'original')] ?? 1;
+  if (divisor > 1) {
+    const arq = ingest.nivelPronto(src.id, divisor);
+    // Sem o nível pronto, cai no original: melhor ver em alta do que não ver.
+    if (arq) return servirArquivo(res, arq, 'video/mp4');
+  }
+  servirArquivo(res, src.path, 'video/mp4');
+}));
+
+/** Quais qualidades existem, quais estão sendo geradas. */
+app.get('/api/sources/:id/qualidades', rota((req, res) => {
+  const src = exigirFonte(req);
+  ingest.adotarProxyAntigo(src.id);
+  const alt = src.height || 0;
+  res.json({
+    niveis: Object.entries(DIVISOR).map(([nome, d]) => ({
+      nome,
+      divisor: d,
+      altura: d === 1 ? alt : Math.round(alt / d / 2) * 2,
+      pronto: d === 1 ? true : !!ingest.nivelPronto(src.id, d),
+      gerando: d === 1 ? false : ingest.gerandoNivel(src.id, d),
+    })),
+  });
+}));
+
+/** Gera uma qualidade sob demanda. */
+app.post('/api/sources/:id/qualidades', rota((req, res) => {
+  const src = exigirFonte(req);
+  const divisor = DIVISOR[String(req.body?.nivel || '')];
+  if (!divisor || divisor === 1) return res.status(400).json({ erro: 'nível inválido' });
+  if (ingest.nivelPronto(src.id, divisor)) return res.json({ ok: true, jaExistia: true });
+  ingest.gerarNivel(src.id, divisor).catch(() => undefined);
+  res.json({ ok: true, gerando: true });
+}));
+
+/** Rota antiga: a timeline e o estúdio continuam preferindo o proxy leve. */
 app.get('/media/:id/proxy', rota((req, res) => {
   const src = exigirFonte(req);
-  // Enquanto o proxy nao fica pronto, cai no arquivo original: da pra comecar a
-  // trabalhar num arquivo de 10h antes do ingest terminar.
-  const f = src.proxy_path && fs.existsSync(src.proxy_path) ? src.proxy_path : src.path;
-  servirArquivo(res, f, 'video/mp4');
+  ingest.adotarProxyAntigo(src.id);
+  const arq = ingest.nivelPronto(src.id, 2);
+  servirArquivo(res, arq || src.path, 'video/mp4');
 }));
 
 app.get('/media/:id/original', rota((req, res) => servirArquivo(res, exigirFonte(req).path)));
