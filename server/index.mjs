@@ -317,6 +317,7 @@ app.get('/api/biblioteca', rota((req, res) => {
     // Só faz sentido listar subpastas quando se está dentro de uma pasta.
     ...(pasta ? db.subpastasDe(pasta, path.sep) : { subpastas: [], diretos: 0 }),
     contagem: db.contarMidia(),
+    formatos: db.formatosExistentes(),
     pastas: db.listarPastas(),
   });
 }));

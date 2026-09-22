@@ -425,6 +425,8 @@ export function listarMidia({
   if (filtro === 'favoritos') cond.push('favorito = 1');
   if (filtro === 'naoRevisados') cond.push('revisado = 0');
   if (filtro === 'revisados') cond.push('revisado = 1');
+  if (filtro === 'video' || filtro === 'audio') { cond.push('tipo = ?'); args.push(filtro); }
+  if (filtro.startsWith('.')) { cond.push('ext = ?'); args.push(filtro); }
   if (q) { cond.push('nome LIKE ?'); args.push(`%${q}%`); }
   if (pasta) {
     if (recursivo) { cond.push('pasta LIKE ?'); args.push(`${pasta}%`); }
@@ -476,6 +478,11 @@ export function subpastasDe(base, sep = '\\') {
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
   };
 }
+
+/** Formatos presentes na biblioteca, pra montar os filtros sem chutar. */
+export const formatosExistentes = () =>
+  handle().prepare(`SELECT ext, tipo, COUNT(*) AS n FROM biblioteca
+    WHERE ausente = 0 GROUP BY ext ORDER BY n DESC`).all();
 
 export function contarMidia() {
   const d = handle();

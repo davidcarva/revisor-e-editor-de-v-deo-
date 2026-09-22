@@ -22,6 +22,32 @@ const ORDENS: [string, string][] = [
 
 const ultimoTrecho = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
+const AGRUPAR: [string, string][] = [
+  ['nenhum', 'Sem agrupar'],
+  ['dia', 'Por dia'],
+  ['tipo', 'Vídeo / áudio'],
+  ['ext', 'Por formato'],
+];
+
+/**
+ * Rótulo do grupo a que um arquivo pertence.
+ *
+ * Datas viram "Hoje"/"Ontem" quando estão perto, e data por extenso quando
+ * estão longe — é assim que se pensa sobre as próprias gravações, não em
+ * carimbos de tempo.
+ */
+function grupoDe(m: Midia, modo: string): string {
+  if (modo === 'tipo') return m.tipo === 'audio' ? 'Áudio' : 'Vídeo';
+  if (modo === 'ext') return m.ext.replace('.', '').toUpperCase();
+  const d = new Date(m.modificado);
+  const dia = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((dia(new Date()) - dia(d)) / 86400000);
+  if (diff <= 0) return 'Hoje';
+  if (diff === 1) return 'Ontem';
+  if (diff < 7) return `${diff} dias atrás`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
 type Props = {
   aoAbrir: (caminho: string) => void;
   aoAvisar: (msg: string) => void;
@@ -41,6 +67,8 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [ocupado, setOcupado] = useState(false);
   const [filtro, setFiltro] = useState('');
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const [agrupar, setAgrupar] = useState('nenhum');
+  const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
 
   const carregar = useCallback(async () => {
@@ -56,6 +84,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       setDiretos(r.diretos ?? 0);
       setRaizes(r.pastas);
       setContagem(r.contagem);
+      setFormatos(r.formatos ?? []);
 
       // A fileira de recentes só aparece na raiz e sem busca: em qualquer outro
       // lugar ela repetiria cartões que já estão logo abaixo.
@@ -142,6 +171,19 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     return () => window.removeEventListener('keydown', esc);
   }, []);
 
+  // Agrupar no cliente: a lista já está em mãos e tem no máximo 300 itens.
+  // Pedir ao banco de novo só pra mudar o cabeçalho seria trabalho à toa.
+  const grupos = useMemo(() => {
+    if (agrupar === 'nenhum') return [{ titulo: '', itens }];
+    const mapa = new Map<string, Midia[]>();
+    for (const m of itens) {
+      const g = grupoDe(m, agrupar);
+      if (!mapa.has(g)) mapa.set(g, []);
+      mapa.get(g)!.push(m);
+    }
+    return [...mapa.entries()].map(([titulo, lista]) => ({ titulo, itens: lista }));
+  }, [itens, agrupar]);
+
   const semNada = raizes.length === 0;
 
   return (
@@ -221,6 +263,14 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               <option value="favoritos">★ Favoritos</option>
               <option value="naoRevisados">Ainda não revisados</option>
               <option value="revisados">Já revisados</option>
+              <option value="video">Só vídeo</option>
+              <option value="audio">Só áudio</option>
+              {formatos.map((f) => (
+                <option key={f.ext} value={f.ext}>{f.ext} ({f.n})</option>
+              ))}
+            </select>
+            <select value={agrupar} onChange={(e) => setAgrupar(e.target.value)} title="Agrupar">
+              {AGRUPAR.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
             </select>
             <select value={ordem} onChange={(e) => setOrdem(e.target.value)} title="Ordenar por">
               {ORDENS.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
@@ -287,7 +337,20 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               {pasta && !recursivo && diretos > itens.length && ` de ${diretos}`}
             </small>
           </h2>
-          <Grade itens={itens} aoAbrir={aoAbrir} selecao={selecao} aoSelecionar={selecionar} aoMarcar={marcarUm} />
+          {grupos.map((g) => (
+            <div key={g.titulo || 'tudo'} className="grupo">
+              {g.titulo && (
+                <h3 className="grupo-titulo">{g.titulo}<small>{g.itens.length}</small></h3>
+              )}
+              <Grade
+                itens={g.itens}
+                aoAbrir={aoAbrir}
+                selecao={selecao}
+                aoSelecionar={selecionar}
+                aoMarcar={marcarUm}
+              />
+            </div>
+          ))}
         </section>
       )}
 

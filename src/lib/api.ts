@@ -185,6 +185,7 @@ export const api = {
       subpastas: Subpasta[];
       diretos: number;
       contagem: { total: number; vistos: number; semPoster: number };
+      formatos: { ext: string; tipo: string; n: number }[];
       pastas: Pasta[];
     }>(
       `/api/biblioteca?${new URLSearchParams(
