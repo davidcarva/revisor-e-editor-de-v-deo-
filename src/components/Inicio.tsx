@@ -8,17 +8,10 @@ import { api, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/ap
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
 import { BarraSelecao } from './Organizar';
+import { Detalhes, Icones, LadoALado, VISOES, type Visual } from './Visoes';
 
 const tamanhoCurto = (n: number) =>
   (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.round(n / 1e6)} MB`);
-
-const ORDENS: [string, string][] = [
-  ['modificado', 'Mais recentes'],
-  ['antigos', 'Mais antigos'],
-  ['nome', 'Nome'],
-  ['duracao', 'Duração'],
-  ['tamanho', 'Tamanho'],
-];
 
 const ultimoTrecho = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
@@ -64,6 +57,11 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [pasta, setPasta] = useState('');
   const [recursivo, setRecursivo] = useState(false);
   const [ordem, setOrdem] = useState('modificado');
+  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+  const [visual, setVisual] = useState<Visual>(() => {
+    try { return (localStorage.getItem('revisor:visual') as Visual) || 'grade'; }
+    catch { return 'grade'; }
+  });
   const [ocupado, setOcupado] = useState(false);
   const [filtro, setFiltro] = useState('');
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
@@ -74,7 +72,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const carregar = useCallback(async () => {
     try {
       const r = await api.biblioteca({
-        q: busca, pasta, ordem, filtro, limite: 300,
+        q: busca, pasta, ordem, dir, filtro, limite: 300,
         // Sem pasta escolhida a grade é o acervo inteiro; aí recursivo é o único
         // sentido possível.
         recursivo: pasta ? recursivo : true,
@@ -94,7 +92,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         setRecentes([]);
       }
     } catch (e) { aoAvisar(String((e as Error).message)); }
-  }, [busca, pasta, ordem, filtro, recursivo, aoAvisar]);
+  }, [busca, pasta, ordem, dir, filtro, recursivo, aoAvisar]);
 
   useEffect(() => {
     const id = window.setTimeout(carregar, busca ? 250 : 0);
@@ -184,6 +182,18 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     return [...mapa.entries()].map(([titulo, lista]) => ({ titulo, itens: lista }));
   }, [itens, agrupar]);
 
+  // Clicar na coluna que já ordena inverte; clicar em outra começa pelo sentido
+  // natural dela — texto sobe de A a Z, número e data descem do maior.
+  const ordenarPor = (coluna: string) => {
+    if (coluna === ordem) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setOrdem(coluna); setDir(['nome', 'ext', 'pasta'].includes(coluna) ? 'asc' : 'desc'); }
+  };
+
+  const trocarVisual = (v: Visual) => {
+    setVisual(v);
+    try { localStorage.setItem('revisor:visual', v); } catch { /* modo privado */ }
+  };
+
   const semNada = raizes.length === 0;
 
   return (
@@ -272,9 +282,32 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
             <select value={agrupar} onChange={(e) => setAgrupar(e.target.value)} title="Agrupar">
               {AGRUPAR.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
             </select>
-            <select value={ordem} onChange={(e) => setOrdem(e.target.value)} title="Ordenar por">
-              {ORDENS.map(([v, r]) => <option key={v} value={v}>{r}</option>)}
+            <select
+              value={`${ordem}:${dir}`}
+              onChange={(e) => {
+                const [c, d2] = e.target.value.split(':');
+                setOrdem(c); setDir(d2 as 'asc' | 'desc');
+              }}
+              title="Ordenar por"
+            >
+              <option value="modificado:desc">Mais recentes</option>
+              <option value="modificado:asc">Mais antigos</option>
+              <option value="nome:asc">Nome A–Z</option>
+              <option value="nome:desc">Nome Z–A</option>
+              <option value="duracao:desc">Mais longos</option>
+              <option value="tamanho:desc">Maiores</option>
             </select>
+            <div className="visoes" role="group" aria-label="Modo de visualização">
+              {VISOES.map((v) => (
+                <button
+                  key={v.id}
+                  className={visual === v.id ? 'on' : ''}
+                  onClick={() => trocarVisual(v.id)}
+                  title={v.rotulo}
+                  aria-pressed={visual === v.id}
+                >{v.icone}</button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -306,7 +339,14 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       {recentes.length > 0 && (
         <section>
           <h2>Mídia recente</h2>
-          <Grade itens={recentes} aoAbrir={aoAbrir} selecao={selecao} aoSelecionar={selecionar} aoMarcar={marcarUm} />
+          <Grade
+            itens={recentes}
+            aoAbrir={aoAbrir}
+            selecao={selecao}
+            aoSelecionar={selecionar}
+            aoMarcar={marcarUm}
+            visual={visual === 'detalhes' ? 'grade' : visual}
+          />
         </section>
       )}
 
@@ -348,6 +388,10 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
                 selecao={selecao}
                 aoSelecionar={selecionar}
                 aoMarcar={marcarUm}
+                visual={visual}
+                ordem={ordem}
+                dir={dir}
+                aoOrdenar={ordenarPor}
               />
             </div>
           ))}
@@ -373,20 +417,32 @@ type PropsGrade = {
   selecao: Set<number>;
   aoSelecionar: (id: number, e: React.MouseEvent) => void;
   aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
+  visual: Visual;
+  ordem?: string;
+  dir?: string;
+  aoOrdenar?: (coluna: string) => void;
 };
 
-function Grade({ itens, aoAbrir, selecao, aoSelecionar, aoMarcar }: PropsGrade) {
+/**
+ * Despachante das visões. Todas recebem as mesmas props e mantêm seleção,
+ * favorito e "revisado" funcionando — trocar de visão não pode trocar o que
+ * dá pra fazer.
+ */
+function Grade(p: PropsGrade) {
+  if (p.visual === 'detalhes') return <Detalhes {...p} aoOrdenar={p.aoOrdenar} />;
+  if (p.visual === 'icones') return <Icones {...p} />;
+  if (p.visual === 'ladoALado') return <LadoALado {...p} />;
   return (
     <div className="grade">
-      {itens.map((m) => (
+      {p.itens.map((m) => (
         <Cartao
           key={m.id}
           midia={m}
-          aoAbrir={aoAbrir}
-          selecionado={selecao.has(m.id)}
-          modoSelecao={selecao.size > 0}
-          aoSelecionar={aoSelecionar}
-          aoMarcar={aoMarcar}
+          aoAbrir={p.aoAbrir}
+          selecionado={p.selecao.has(m.id)}
+          modoSelecao={p.selecao.size > 0}
+          aoSelecionar={p.aoSelecionar}
+          aoMarcar={p.aoMarcar}
         />
       ))}
     </div>

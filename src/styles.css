@@ -1,20 +1,32 @@
 /* Paleta em tokens de propósito: trocar o visual inteiro é trocar este bloco.
-   O resto do arquivo só usa as variáveis. */
+   O resto do arquivo só usa as variáveis.
+
+   Monocromático por decisão: preto neutro (não azulado), realce em branco, e
+   cor reservada para o que é estado — erro, pronto, favorito, e a cor de cada
+   faixa de áudio. Numa ferramenta cujo conteúdo é vídeo, interface colorida
+   compete com o material; cinza e branco somem atrás dele. */
 :root {
-  --fundo: #0b0d12;
-  --painel: #12151b;
-  --painel2: #171b23;
-  --painel3: #1f2531;
-  --borda: #232936;
-  --borda-forte: #313a4c;
-  --texto: #d7dee9;
-  --fraco: #8b96a8;
-  --apagado: #5a6478;
-  --azul: #4f9cf0;
-  --azul-fundo: #17304f;
-  --vermelho: #ff4d4f;
-  --verde: #5fbf7a;
-  --ambar: #e8c33c;
+  --fundo: #09090a;
+  --painel: #0f0f10;
+  --painel2: #161617;
+  --painel3: #202021;
+  --borda: #1e1e20;
+  --borda-forte: #2e2e31;
+  --texto: #f2f2f3;
+  --fraco: #a0a0a6;
+  --apagado: #6a6a70;
+
+  /* O realce é branco. `--azul` continua existindo porque meio app o usa pelo
+     nome; apontá-lo para o realce troca tudo de uma vez sem renomear nada. */
+  --realce: #f5f5f6;
+  --realce-texto: #0a0a0b;
+  --realce-fundo: #242427;
+  --azul: var(--realce);
+  --azul-fundo: var(--realce-fundo);
+
+  --vermelho: #ff6b6b;
+  --verde: #6ee7a8;
+  --ambar: #f2ce5c;
 
   /* Movimento. Uma curva só no app inteiro: é o que faz tudo parecer a mesma
      peça de software em vez de telas montadas por pessoas diferentes. */
@@ -22,8 +34,8 @@
   --rapido: 0.12s;
   --medio: 0.24s;
   --lento: 0.42s;
-  --raio: 7px;
-  --raio-g: 11px;
+  --raio: 10px;
+  --raio-g: 16px;
   color-scheme: dark;
 }
 
@@ -116,7 +128,7 @@ input:focus, textarea:focus, select:focus {
 .cinema-btn:hover:not(:disabled) { border-color: #ffffff59; color: #fff; }
 .cinema-btn.destaque { border-color: #4f9cf059; }
 .cinema-btn.destaque::before { background: var(--azul); }
-.cinema-btn.destaque:hover:not(:disabled) { color: #07101c; border-color: var(--azul); }
+.cinema-btn.destaque:hover:not(:disabled) { color: var(--realce-texto); border-color: var(--azul); }
 .cinema-btn-icone { font-size: 13px; line-height: 1; }
 
 .cinema-titulo {
@@ -188,7 +200,7 @@ input:focus, textarea:focus, select:focus {
 }
 .ctrl::before { background: #ffffff2e; }
 .ctrl:hover:not(:disabled) { border-color: #ffffff59; color: #fff; }
-.ctrl.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.ctrl.on { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
 .ctrl.principal { min-width: 46px; font-size: 15px; }
 .ctrl-espaco { flex: 1; }
 
@@ -257,7 +269,7 @@ input:focus, textarea:focus, select:focus {
   border-bottom: 1px solid var(--borda);
   flex: 0 0 auto;
 }
-.marca { font-weight: 700; letter-spacing: .04em; color: var(--azul); }
+.marca { font-weight: 600; letter-spacing: .06em; color: var(--texto); font-size: 12px; text-transform: uppercase; }
 .voltar { background: none; border: none; color: var(--fraco); padding: 2px 6px; }
 .titulo-arquivo {
   font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -271,8 +283,12 @@ input:focus, textarea:focus, select:focus {
 .abrir h2 { font-size: 15px; margin: 0 0 12px; font-weight: 600; }
 .abrir-linha { display: flex; gap: 8px; margin-bottom: 16px; }
 .abrir-linha input { flex: 1; }
-.primario { background: var(--azul); border-color: var(--azul); color: #07101c; font-weight: 600; }
-.primario:hover { background: #63a9f5; }
+.primario {
+  background: var(--realce); border-color: var(--realce);
+  color: var(--realce-texto); font-weight: 600;
+}
+.primario::before { background: #ffffff; }
+.primario:hover:not(:disabled) { border-color: var(--realce); color: var(--realce-texto); }
 
 .navegador { border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; }
 .nav-topo {
@@ -314,9 +330,11 @@ input:focus, textarea:focus, select:focus {
 .vazio { color: var(--apagado); font-size: 12px; padding: 12px; margin: 0; }
 
 /* --------------------------------------------------------------- inicio */
-.inicio { flex: 1 1 auto; overflow: auto; padding: 22px 26px 60px; }
-.inicio-topo { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-.inicio-topo h1 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -.01em; }
+.inicio { flex: 1 1 auto; overflow: auto; padding: 30px 34px 70px; }
+.inicio-topo { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+.inicio-topo h1 {
+  margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -.02em;
+}
 .inicio-busca { width: 260px; margin-left: 10px; padding: 5px 10px; }
 .inicio-acoes { margin-left: auto; display: flex; gap: 8px; }
 
@@ -325,7 +343,7 @@ input:focus, textarea:focus, select:focus {
 }
 .trilha { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .trilha button { padding: 3px 9px; font-size: 12px; }
-.trilha button.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.trilha button.on { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
 .trilha small { opacity: .7; }
 .trilha-sep { color: var(--apagado); margin: 0 1px; }
 .trilha-passo, .trilha-raiz { display: inline-flex; align-items: center; gap: 4px; }
@@ -347,9 +365,9 @@ input:focus, textarea:focus, select:focus {
   margin-bottom: 4px;
 }
 .cartao-pasta {
-  display: flex; align-items: center; gap: 9px; text-align: left;
-  padding: 9px 11px; background: var(--painel); border: 1px solid var(--borda);
-  border-radius: 6px;
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  padding: 12px 14px; border: 1px solid var(--borda); border-radius: var(--raio);
+  background: linear-gradient(160deg, #141416, #0e0e0f);
 }
 .cartao-pasta:hover { background: var(--painel2); border-color: #3a4560; }
 .cartao-pasta-icone { font-size: 15px; flex: 0 0 auto; }
@@ -374,6 +392,132 @@ input:focus, textarea:focus, select:focus {
 .inicio h2 small { color: var(--apagado); font-size: 11px; font-weight: 400; }
 
 /* A largura mínima do cartão define quantas colunas cabem; o resto é do grid. */
+/* -------------------------------------------------- modos de visualização */
+.visoes { display: inline-flex; }
+.visoes button {
+  padding: 5px 9px; font-size: 13px; line-height: 1;
+  border-radius: 0; border-right-width: 0;
+}
+.visoes button:first-child { border-radius: var(--raio) 0 0 var(--raio); }
+.visoes button:last-child { border-radius: 0 var(--raio) var(--raio) 0; border-right-width: 1px; }
+.visoes button.on { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
+.visoes button.on::before { background: var(--azul); }
+
+/* --- detalhes: a tabela */
+.tabela-caixa {
+  border: 1px solid var(--borda); border-radius: var(--raio-g); overflow: hidden;
+}
+/* `table-layout: fixed` é o que permite truncar nome e pasta com reticências.
+   Sem ele, `max-width` na célula colapsa a coluna inteira em layout automático
+   — e a coluna Nome saiu literalmente em branco quando tentei do outro jeito. */
+.tabela { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.tabela th.col-marca { width: 36px; }
+.tabela th:nth-child(2) { width: auto; }
+.tabela th:nth-child(3) { width: 88px; }
+.tabela th:nth-child(4) { width: 96px; }
+.tabela th:nth-child(5) { width: 72px; }
+.tabela th:nth-child(6) { width: 78px; }
+.tabela th:nth-child(7) { width: 152px; }
+.tabela th:nth-child(8) { width: 148px; }
+.tabela thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--painel2); border-bottom: 1px solid var(--borda);
+  text-align: left; font-weight: 500; padding: 0;
+}
+.tabela thead th button {
+  width: 100%; background: none; border: none; border-radius: 0;
+  padding: 8px 10px; text-align: left; color: var(--fraco); font-size: 11px;
+  display: flex; align-items: center; gap: 5px;
+}
+.tabela thead th button::before { background: #ffffff0f; }
+.tabela thead th.ordenando button { color: var(--azul); }
+.tabela thead th.num button { justify-content: flex-end; }
+.tabela .seta { font-size: 8px; }
+
+.tabela tbody tr {
+  border-bottom: 1px solid #161a22; cursor: pointer;
+  transition: background var(--rapido) var(--curva);
+}
+.tabela tbody tr:hover { background: var(--painel2); }
+.tabela tbody tr.sel { background: var(--azul-fundo); }
+.tabela tbody tr.revisto .nome-texto { color: var(--fraco); }
+.tabela td { padding: 6px 10px; white-space: nowrap; }
+.tabela td.num { text-align: right; font-family: ui-monospace, Consolas, monospace; }
+.tabela td.fraco { color: var(--fraco); }
+.col-marca { width: 34px; padding-left: 10px !important; }
+.marca-caixa {
+  display: inline-grid; place-items: center; width: 17px; height: 17px;
+  border: 1px solid var(--borda-forte); border-radius: 4px; font-size: 10px;
+  transition: background var(--rapido) var(--curva), border-color var(--rapido) var(--curva);
+}
+.tabela tr:hover .marca-caixa { border-color: var(--azul); }
+.marca-caixa.on { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
+.col-nome { overflow: hidden; text-overflow: ellipsis; }
+.col-nome .nome-texto { vertical-align: middle; }
+.col-pasta { overflow: hidden; text-overflow: ellipsis; }
+.ponto-tipo {
+  display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+  margin-right: 8px; vertical-align: middle; background: var(--azul);
+}
+.ponto-tipo.audio { background: #a97cf0; border-radius: 50%; }
+.linha-estrela {
+  background: none; border: none; padding: 0 5px; color: var(--apagado);
+  opacity: 0; transition: opacity var(--rapido) var(--curva);
+}
+.tabela tr:hover .linha-estrela, .linha-estrela.on { opacity: 1; }
+.linha-estrela.on { color: var(--ambar); }
+.linha-revisto { color: var(--verde); margin-left: 4px; }
+
+/* --- ícones: só o essencial, muitos por tela */
+.grade-icones {
+  display: grid; gap: 10px 8px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+}
+.icone {
+  background: none; border: 1px solid transparent; padding: 8px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  border-radius: var(--raio);
+  transition: background var(--rapido) var(--curva), border-color var(--rapido) var(--curva);
+}
+.icone:hover { background: var(--painel2); }
+.icone.sel { background: var(--azul-fundo); border-color: var(--azul); }
+.icone-arte {
+  width: 62px; height: 62px; border-radius: var(--raio);
+  background: #0a0c11; border: 1px solid var(--borda);
+  display: grid; place-items: center; overflow: hidden;
+}
+.icone-arte img { width: 100%; height: 100%; object-fit: cover; }
+.icone-glifo { font-size: 19px; opacity: .5; }
+.icone-nome {
+  font-size: 11px; line-height: 1.25; text-align: center; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* --- lado a lado: nome, tipo e tamanho legíveis de relance */
+.grade-lado {
+  display: grid; gap: 7px;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+}
+.ladrilho {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 11px 13px; border: 1px solid var(--borda); border-radius: var(--raio);
+  background: linear-gradient(160deg, #141416, #0e0e0f);
+  transition: background var(--rapido) var(--curva), border-color var(--rapido) var(--curva);
+}
+.ladrilho:hover { background: var(--painel2); border-color: var(--borda-forte); }
+.ladrilho.sel { background: var(--azul-fundo); border-color: var(--azul); }
+.ladrilho-arte {
+  flex: 0 0 auto; width: 54px; height: 54px; border-radius: 6px;
+  background: #0a0c11; border: 1px solid var(--borda);
+  display: grid; place-items: center; overflow: hidden;
+}
+.ladrilho-arte img { width: 100%; height: 100%; object-fit: cover; }
+.ladrilho-texto { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ladrilho-nome {
+  font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ladrilho-meta { font-size: 11px; color: var(--fraco); }
+
 .grupo { margin-bottom: 22px; }
 .grupo-titulo {
   display: flex; align-items: baseline; gap: 9px;
@@ -409,7 +553,7 @@ input:focus, textarea:focus, select:focus {
 .cartao-estrela { right: 6px; padding: 0; }
 .cartao:hover .cartao-caixa, .cartao:hover .cartao-estrela,
 .cartao-caixa.on, .cartao-estrela.on { display: grid; }
-.cartao-caixa.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.cartao-caixa.on { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
 .cartao-estrela.on { color: #e8c33c; }
 .cartao-revisto {
   position: absolute; top: 6px; right: 30px;
@@ -477,9 +621,12 @@ input:focus, textarea:focus, select:focus {
 .previa .mais { color: var(--apagado); padding-top: 5px; }
 .cartao-arte {
   position: relative; aspect-ratio: 16 / 9; width: 100%;
-  background: #0a0c11; border: 1px solid var(--borda); border-radius: 6px;
+  background: linear-gradient(160deg, #141416, #0c0c0d);
+  border: 1px solid var(--borda); border-radius: var(--raio);
   overflow: hidden; display: grid; place-items: center;
+  transition: border-color var(--medio) var(--curva), transform var(--medio) var(--curva);
 }
+.cartao:hover .cartao-arte { transform: translateY(-2px); }
 .cartao-arte img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cartao-arte.audio { background: #14181f; }
 .cartao-icone { font-size: 26px; opacity: .45; }
@@ -519,7 +666,7 @@ input:focus, textarea:focus, select:focus {
   flex: 1 1 auto; min-height: 0; border-bottom: 1px solid var(--borda);
 }
 .area-principal.com-transcricao { grid-template-columns: 1fr 320px 420px; }
-.acoes-topo button.ligado { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.acoes-topo button.ligado { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
 
 /* Indicador de transcrição: a barra de progresso É o botão, com a palavra dentro. */
 .ind-transc {
@@ -644,7 +791,7 @@ input:focus, textarea:focus, select:focus {
 .painel-topo .busca { flex: 1; padding: 3px 8px; }
 .contagem { color: var(--apagado); font-size: 11px; }
 .painel-topo .copiar { padding: 2px 8px; font-size: 11px; }
-.tl-cab-botoes button.on.nav { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.tl-cab-botoes button.on.nav { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); }
 
 .painel-lista { flex: 1 1 auto; overflow: auto; min-height: 0; }
 .item {
@@ -676,7 +823,7 @@ input:focus, textarea:focus, select:focus {
 .entrada-rodape { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .cores { display: flex; gap: 3px; }
 .tc-fixado { margin-left: auto; color: var(--apagado); font-size: 11px; }
-.registrar { background: var(--azul); border-color: var(--azul); color: #07101c; font-weight: 600; }
+.registrar { background: var(--azul); border-color: var(--azul); color: var(--realce-texto); font-weight: 600; }
 
 /* ------------------------------------------------------------ timeline */
 .timeline {

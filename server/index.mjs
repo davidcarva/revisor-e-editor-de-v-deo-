@@ -310,6 +310,7 @@ app.get('/api/biblioteca', rota((req, res) => {
       pasta,
       recursivo,
       ordem: String(req.query.ordem || 'modificado'),
+      dir: String(req.query.dir || 'desc'),
       filtro: String(req.query.filtro || ''),
       limite: Math.min(400, Number(req.query.limite) || 120),
       offset: Number(req.query.offset) || 0,

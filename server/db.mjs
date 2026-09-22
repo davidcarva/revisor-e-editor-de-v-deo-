@@ -417,8 +417,8 @@ export const marcarAusentes = (pasta) =>
  * abaixo dela entra junto.
  */
 export function listarMidia({
-  q = '', pasta = '', ordem = 'modificado', limite = 120, offset = 0, recursivo = true,
-  filtro = '',
+  q = '', pasta = '', ordem = 'modificado', dir = 'desc',
+  limite = 120, offset = 0, recursivo = true, filtro = '',
 } = {}) {
   const cond = ['ausente = 0'];
   const args = [];
@@ -434,14 +434,24 @@ export function listarMidia({
   }
   if (ordem === 'vistos') cond.push('visto_em IS NOT NULL');
 
-  const ordenar = {
-    vistos: 'visto_em DESC',
-    modificado: 'modificado DESC',
-    antigos: 'modificado ASC',
+  // Coluna e direcao separadas: a visao de detalhes precisa inverter qualquer
+  // coluna ao clicar no cabecalho, como todo gerenciador de arquivos faz.
+  const COLUNAS = {
+    vistos: 'visto_em',
+    modificado: 'modificado',
     nome: 'nome COLLATE NOCASE',
-    duracao: 'duracao DESC NULLS LAST',
-    tamanho: 'tamanho DESC',
-  }[ordem] ?? 'modificado DESC';
+    duracao: 'duracao',
+    tamanho: 'tamanho',
+    ext: 'ext',
+    faixas: 'faixas_audio',
+    pasta: 'pasta COLLATE NOCASE',
+  };
+  // Compatibilidade: "antigos" era um valor proprio antes de existir direcao.
+  const coluna = COLUNAS[ordem === 'antigos' ? 'modificado' : ordem] ?? COLUNAS.modificado;
+  const sentido = ordem === 'antigos' ? 'ASC' : (String(dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC');
+  // NULLS LAST pra duracao e faixas: arquivo ainda nao sondado nao pode
+  // encabecar a lista so por nao ter valor.
+  const ordenar = `${coluna} ${sentido} NULLS LAST`;
 
   args.push(limite, offset);
   return handle().prepare(`SELECT * FROM biblioteca WHERE ${cond.join(' AND ')}

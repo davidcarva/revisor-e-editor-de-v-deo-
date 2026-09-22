@@ -177,8 +177,8 @@ export const api = {
     pedir<{ arquivo: string }>(`/api/sources/${id}/export/${formato}`, json('POST', { dir })),
 
   biblioteca: (p: {
-    q?: string; pasta?: string; ordem?: string; limite?: number; recursivo?: boolean;
-    filtro?: string;
+    q?: string; pasta?: string; ordem?: string; dir?: string; limite?: number;
+    recursivo?: boolean; filtro?: string;
   } = {}) =>
     pedir<{
       itens: Midia[];
