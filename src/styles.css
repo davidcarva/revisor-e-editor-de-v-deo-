@@ -1,14 +1,29 @@
+/* Paleta em tokens de propósito: trocar o visual inteiro é trocar este bloco.
+   O resto do arquivo só usa as variáveis. */
 :root {
   --fundo: #0b0d12;
   --painel: #12151b;
   --painel2: #171b23;
+  --painel3: #1f2531;
   --borda: #232936;
+  --borda-forte: #313a4c;
   --texto: #d7dee9;
-  --fraco: #7d8798;
-  --apagado: #4c5566;
+  --fraco: #8b96a8;
+  --apagado: #5a6478;
   --azul: #4f9cf0;
+  --azul-fundo: #17304f;
   --vermelho: #ff4d4f;
   --verde: #5fbf7a;
+  --ambar: #e8c33c;
+
+  /* Movimento. Uma curva só no app inteiro: é o que faz tudo parecer a mesma
+     peça de software em vez de telas montadas por pessoas diferentes. */
+  --curva: cubic-bezier(0.22, 1, 0.36, 1);
+  --rapido: 0.12s;
+  --medio: 0.24s;
+  --lento: 0.42s;
+  --raio: 7px;
+  --raio-g: 11px;
   color-scheme: dark;
 }
 
@@ -28,15 +43,211 @@ button, input, textarea, select {
   color: inherit;
   background: var(--painel2);
   border: 1px solid var(--borda);
-  border-radius: 5px;
-  padding: 4px 8px;
+  border-radius: var(--raio);
+  padding: 5px 10px;
 }
-button { cursor: pointer; }
-button:hover:not(:disabled) { background: #1f2531; border-color: #323a4a; }
+
+/* Botão: o preenchimento sobe por baixo do rótulo no hover, e o botão afunda
+   ao ser pressionado. Dois detalhes baratos que dão a sensação de peça física
+   em vez de retângulo clicável. */
+button {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  transition: color var(--rapido) var(--curva),
+              border-color var(--rapido) var(--curva),
+              transform var(--rapido) var(--curva);
+}
+button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--painel3);
+  transform: translateY(101%);
+  transition: transform var(--medio) var(--curva);
+}
+button:hover:not(:disabled)::before { transform: translateY(0); }
+button:hover:not(:disabled) { border-color: var(--borda-forte); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .4; cursor: default; }
-input:focus, textarea:focus, select:focus { outline: 1px solid var(--azul); border-color: var(--azul); }
+button:focus-visible { outline: 2px solid var(--azul); outline-offset: 1px; }
+
+input, textarea, select {
+  transition: border-color var(--rapido) var(--curva), background var(--rapido) var(--curva);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--azul); background: var(--fundo);
+}
+
+/* Quem pediu menos movimento recebe menos movimento — em tudo, não só aqui. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
 
 .app { display: flex; flex-direction: column; height: 100%; }
+
+/* ================================================================= cinema */
+.app.cinema { background: #000; }
+.cinema-palco { position: relative; flex: 1 1 auto; min-height: 0; background: #000; }
+.cinema-palco .visor, .cinema-palco .visor-video { height: 100%; }
+.cinema-palco video { width: 100%; height: 100%; object-fit: contain; }
+
+/* Topo do cinema: volta, painéis e título. Aparece e some junto com os
+   controles de baixo, pelo mesmo gesto — são a mesma camada de interface. */
+.cinema-topo {
+  position: absolute; inset: 0 0 auto 0; z-index: 12;
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 16px 34px;
+  background: linear-gradient(to bottom, #000000cc 10%, #00000066 55%, transparent);
+  transition: opacity var(--medio) var(--curva), transform var(--medio) var(--curva);
+}
+.cinema-btn {
+  background: #00000099; backdrop-filter: blur(10px);
+  border-color: #ffffff26; color: #fff; height: 34px;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.cinema-btn::before { background: #ffffff26; }
+.cinema-btn:hover:not(:disabled) { border-color: #ffffff59; color: #fff; }
+.cinema-btn.destaque { border-color: #4f9cf059; }
+.cinema-btn.destaque::before { background: var(--azul); }
+.cinema-btn.destaque:hover:not(:disabled) { color: #07101c; border-color: var(--azul); }
+.cinema-btn-icone { font-size: 13px; line-height: 1; }
+
+.cinema-titulo {
+  margin-left: 6px; color: #ffffffe6; font-weight: 600; font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cinema-selo {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--azul);
+  background: #00000099; backdrop-filter: blur(10px);
+  border: 1px solid #4f9cf040; border-radius: 99px; padding: 4px 11px;
+}
+.cinema-selo i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--azul);
+  animation: pulso 1.8s ease-in-out infinite;
+}
+
+.cinema-palco:has(.controles.sumido) .cinema-topo {
+  opacity: 0; transform: translateY(-10px); pointer-events: none;
+}
+.cinema-palco:has(.controles.sumido) { cursor: none; }
+
+/* No estúdio o visor também é um palco, só que menor. */
+.visor-palco { position: relative; min-height: 0; display: flex; }
+.visor-palco .visor { flex: 1 1 auto; min-width: 0; }
+
+/* =============================================================== controles */
+.controles {
+  position: absolute; inset: auto 0 0 0; z-index: 14;
+  padding: 40px 16px 14px;
+  background: linear-gradient(to top, #000000e6 8%, #00000099 55%, transparent);
+  transition: opacity var(--medio) var(--curva), transform var(--medio) var(--curva);
+}
+.controles.sumido { opacity: 0; transform: translateY(12px); pointer-events: none; }
+
+
+/* --- barra de progresso: fina parada, grossa sob o cursor */
+.controles-barra { padding: 0 2px 10px; }
+.trilho {
+  position: relative; height: 16px; display: flex; align-items: center;
+  cursor: pointer; touch-action: none;
+}
+.trilho-fundo, .trilho-cheio {
+  position: absolute; left: 0; height: 4px; border-radius: 3px;
+  transition: height var(--rapido) var(--curva);
+}
+.trilho-fundo { right: 0; background: #ffffff2e; }
+.trilho-cheio { width: 0; background: var(--azul); }
+.trilho:hover .trilho-fundo, .trilho:hover .trilho-cheio { height: 7px; }
+.trilho-agulha {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; margin-left: -6.5px; pointer-events: none;
+  transform: scale(0); transition: transform var(--medio) var(--curva);
+  box-shadow: 0 1px 6px #000a;
+}
+.trilho:hover .trilho-agulha { transform: scale(1); }
+.trilho-dica {
+  position: absolute; bottom: 20px; transform: translateX(-50%);
+  background: #000000e6; color: #fff; padding: 3px 7px; border-radius: 4px;
+  font: 11px ui-monospace, Consolas, monospace; pointer-events: none;
+}
+
+/* --- linha de botões */
+.controles-linha { display: flex; align-items: center; gap: 7px; }
+.ctrl {
+  background: #ffffff14; border-color: #ffffff1f; color: #fff;
+  min-width: 36px; height: 34px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ctrl::before { background: #ffffff2e; }
+.ctrl:hover:not(:disabled) { border-color: #ffffff59; color: #fff; }
+.ctrl.on { background: var(--azul); border-color: var(--azul); color: #07101c; }
+.ctrl.principal { min-width: 46px; font-size: 15px; }
+.ctrl-espaco { flex: 1; }
+
+.ctrl-volume { display: flex; align-items: center; gap: 4px; }
+.ctrl-volume input {
+  width: 0; opacity: 0; padding: 0; border: none; background: none;
+  transition: width var(--medio) var(--curva), opacity var(--medio) var(--curva);
+}
+.ctrl-volume:hover input, .ctrl-volume input:focus { width: 86px; opacity: 1; }
+
+.ctrl-tempo {
+  display: flex; align-items: baseline; gap: 6px; margin-left: 6px;
+  font: 13px/1 ui-monospace, Consolas, monospace; color: #fff;
+}
+.ctrl-tempo em { color: #ffffff8c; font-style: normal; font-size: 11px; }
+
+/* --- mixer de faixas: o diferencial, alcançável sem sair do vídeo */
+.mixer-caixa { position: relative; }
+.mixer {
+  position: absolute; bottom: 44px; right: 0; width: 320px;
+  background: #0b0d12f2; backdrop-filter: blur(14px);
+  border: 1px solid var(--borda-forte); border-radius: var(--raio-g);
+  padding: 12px; box-shadow: 0 14px 40px #000b;
+  animation: mixer-sobe var(--medio) var(--curva);
+}
+@keyframes mixer-sobe {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.mixer strong { display: block; font-size: 11px; color: var(--fraco); margin-bottom: 9px; }
+.mixer-linha {
+  display: grid; grid-template-columns: 8px 1fr auto auto 68px 26px;
+  gap: 6px; align-items: center; margin-bottom: 7px;
+}
+.mixer-cor { width: 8px; height: 8px; border-radius: 2px; }
+.mixer-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.mixer-linha button { padding: 0 6px; height: 22px; font-size: 10px; min-width: 24px; }
+.mixer-linha button.on.mudo { background: var(--vermelho); border-color: var(--vermelho); color: #150406; }
+.mixer-linha button.on.solo { background: var(--verde); border-color: var(--verde); color: #04150a; }
+.mixer-linha input[type=range] { width: 100%; height: 16px; padding: 0; }
+.mixer-db {
+  font: 10px ui-monospace, Consolas, monospace; color: var(--fraco); text-align: right;
+}
+.mixer-db.apagado { color: var(--apagado); }
+.mixer-dica {
+  margin: 10px 0 0; font-size: 11px; line-height: 1.45; color: var(--apagado);
+  border-top: 1px solid var(--borda); padding-top: 9px;
+}
+
+/* --- aviso de processamento em segundo plano */
+.visor-aviso-ponto {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--azul); margin-right: 7px;
+  animation: pulso 1.8s ease-in-out infinite;
+}
+@keyframes pulso {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .4; transform: scale(1.35); }
+}
 
 /* ------------------------------------------------------------------ topo */
 .topo {

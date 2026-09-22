@@ -83,23 +83,36 @@ export class Player {
     this.aplicarMixagem();
   }
 
+  /** Volume geral, por cima do ganho de cada faixa. 0..1 */
+  volumeMestre = 1;
+
+  definirVolume(v: number) {
+    this.volumeMestre = Math.max(0, Math.min(1, v));
+    this.aplicarMixagem();
+    this.emitirEstado();
+  }
+
   aplicarMixagem() {
     // No modo assistir o <video> toca o arquivo ORIGINAL, que traz o próprio
     // áudio junto. Assim que as faixas separadas entram no ar, a faixa 1 estaria
     // tocando duas vezes — pelo vídeo e pelo mixer. Quem manda é o mixer; o
     // áudio embutido no vídeo só vale enquanto ele ainda não existe.
-    if (this.video) this.video.muted = this.audios.size > 0;
+    const comMixer = this.audios.size > 0;
+    if (this.video) {
+      this.video.muted = comMixer || this.volumeMestre === 0;
+      if (!comMixer) this.video.volume = this.volumeMestre;
+    }
 
     const temSolo = this.faixas.some((f) => f.solo);
     for (const f of this.faixas) {
       const el = this.audios.get(f.id);
       if (!el) continue;
       const ativo = !f.muted && (!temSolo || !!f.solo) && !this.arrastando;
-      const ganho = ativo ? 10 ** ((f.gain_db || 0) / 20) : 0;
+      const ganho = ativo ? 10 ** ((f.gain_db || 0) / 20) * this.volumeMestre : 0;
       const g = this.ganhos.get(f.id);
       if (g) g.gain.value = ganho;
       else el.volume = Math.min(1, ganho);
-      el.muted = !ativo;
+      el.muted = !ativo || this.volumeMestre === 0;
     }
   }
 

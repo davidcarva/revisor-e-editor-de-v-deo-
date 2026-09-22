@@ -96,9 +96,18 @@ async function teclar(tecla) {
   return `tecla "${tecla}" enviada`;
 }
 
+/** Captura a janela num PNG. Para trabalho visual, ler o DOM não basta. */
+async function capturar(destino) {
+  const r = await enviar('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+  const fs = await import('node:fs/promises');
+  await fs.writeFile(destino, Buffer.from(r.data, 'base64'));
+  return `salvo em ${destino}`;
+}
+
 const args = process.argv.slice(2);
 try {
-  if (args[0] === '--click') console.log(await clicar(args[1]));
+  if (args[0] === '--shot') console.log(await capturar(args[1] || 'tela.png'));
+  else if (args[0] === '--click') console.log(await clicar(args[1]));
   else if (args[0] === '--key') console.log(await teclar(args[1]));
   else console.log(await avaliar(args.join(' ')));
 } finally {

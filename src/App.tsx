@@ -8,6 +8,7 @@ import { Visor } from './components/Player';
 import { Timeline } from './components/Timeline';
 import { PainelLog } from './components/PainelLog';
 import { PainelTranscricao } from './components/PainelTranscricao';
+import { Controles } from './components/Controles';
 import { IndicadorTranscricao, estadoDaTranscricao } from './components/IndicadorTranscricao';
 import { baseDoArquivo } from './lib/tempo';
 
@@ -21,6 +22,11 @@ export default function App() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [verTranscricao, setVerTranscricao] = useState(false);
   const [abrindo, setAbrindo] = useState<string | null>(null);
+  // Abre sempre em cinema, como o Media Player: o vídeo primeiro, o resto
+  // depois. Os painéis de revisão ficam a um clique.
+  const [modo, setModo] = useState<'cinema' | 'estudio'>('cinema');
+  const [telaCheia, setTelaCheia] = useState(false);
+  const palco = useRef<HTMLDivElement>(null);
   const player = useMemo(() => new Player(), []);
 
   // Em desenvolvimento, deixa o motor de reprodução acessível pelo console — sem
@@ -103,6 +109,7 @@ export default function App() {
     try {
       const f = await api.assistir(caminho);
       setAtualId(f.id);
+      setModo('cinema');
       if (f.extraindoAudio) avisar('separando as faixas de áudio em segundo plano…');
     } catch (e) {
       avisar(`não consegui abrir: ${(e as Error).message}`);
@@ -185,6 +192,19 @@ export default function App() {
     } catch (e) { avisar(String((e as Error).message)); }
   };
 
+  const alternarTelaCheia = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await palco.current?.requestFullscreen();
+    } catch (e) { avisar(String((e as Error).message)); }
+  }, [avisar]);
+
+  useEffect(() => {
+    const mudou = () => setTelaCheia(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', mudou);
+    return () => document.removeEventListener('fullscreenchange', mudou);
+  }, []);
+
   // ------------------------------------------------------------- atalhos
   useEffect(() => {
     if (!fonte) return;
@@ -209,10 +229,24 @@ export default function App() {
         case 'o': case 'O':
           setSelecao((s) => ({ de: Math.min(player.tempo, s?.de ?? player.tempo), ate: player.tempo }));
           break;
+        case 'f': case 'F': e.preventDefault(); alternarTelaCheia(); break;
+        case 'j': case 'J': e.preventDefault(); player.pular(-10 * fps, fps); break;
+        case 'l': case 'L': e.preventDefault(); player.pular(10 * fps, fps); break;
+        case 'k': case 'K': e.preventDefault(); player.alternar(); break;
         case 'm': case 'M':
-          criarMarcador({ t_in: player.tempo, text: 'marcador', color: 'amarelo' });
+          e.preventDefault();
+          // No cinema, M é mudo — como em todo reprodutor. No estúdio, é marcador.
+          if (modo === 'cinema') player.definirVolume(player.volumeMestre > 0 ? 0 : 1);
+          else criarMarcador({ t_in: player.tempo, text: 'marcador', color: 'amarelo' });
           break;
-        case 'Escape': setSelecao(null); break;
+        case 't': case 'T':
+          if (modo === 'cinema') { e.preventDefault(); setModo('estudio'); }
+          break;
+        case 'Escape':
+          if (document.fullscreenElement) break;   // o próprio Esc já sai da tela cheia
+          if (modo === 'estudio') setModo('cinema');
+          setSelecao(null);
+          break;
       }
     };
     window.addEventListener('keydown', aoTeclar);
@@ -246,10 +280,59 @@ export default function App() {
     );
   }
 
+  const controles = (
+    <Controles
+      fonte={fonte}
+      player={player}
+      telaCheia={telaCheia}
+      aoAlternarTelaCheia={alternarTelaCheia}
+      aoMudarFaixa={mudarFaixa}
+    />
+  );
+
+  // Cinema: o vídeo ocupa a janela inteira e nada mais aparece até você pedir.
+  // É como o Media Player abre, e é o que faz o Revisor servir como reprodutor
+  // do dia a dia em vez de parecer uma bancada de edição toda vez.
+  if (modo === 'cinema') {
+    return (
+      <div className="app cinema" ref={palco}>
+        <div className="cinema-palco">
+          <Visor fonte={fonte} player={player} />
+          {controles}
+          <div className="cinema-topo">
+            <button
+              className="cinema-btn"
+              onClick={() => { player.pausar(); setAtualId(null); }}
+              title="Voltar para a biblioteca"
+            >←</button>
+            <button
+              className="cinema-btn destaque"
+              onClick={() => setModo('estudio')}
+              title="Mostrar transcrição, faixas e timeline (T)"
+            >
+              <span className="cinema-btn-icone">▤</span>
+              Painéis
+            </button>
+            <span className="cinema-titulo" title={fonte.path}>{fonte.name}</span>
+            {estadoTranscricao?.emCurso && (
+              <span className="cinema-selo" title="transcrevendo em segundo plano">
+                <i />transcrevendo {Math.round(estadoTranscricao.pct * 100)}%
+              </span>
+            )}
+          </div>
+        </div>
+        {aviso && <div className="aviso-flutuante">{aviso}</div>}
+      </div>
+    );
+  }
+
   return (
-    <div className="app trabalhando">
+    <div className="app trabalhando" ref={palco}>
       <Cabecalho>
-        <button className="voltar" onClick={() => { player.pausar(); setAtualId(null); }}>← acervo</button>
+        <button className="voltar" onClick={() => setModo('cinema')} title="Voltar ao modo cinema (Esc)">
+          ← cinema
+        </button>
+        <button className="voltar" onClick={() => { player.pausar(); setAtualId(null); }}>biblioteca</button>
         <span className="titulo-arquivo" title={fonte.path}>{fonte.name}</span>
         <div className="acoes-topo">
           <button onClick={() => exportar('fcp7')} title="Gera o XML da sequência com todas as marcações; importe no Premiere">
@@ -279,7 +362,10 @@ export default function App() {
       </Cabecalho>
 
       <div className={`area-principal${verTranscricao ? ' com-transcricao' : ''}`}>
-        <Visor fonte={fonte} player={player} />
+        <div className="visor-palco">
+          <Visor fonte={fonte} player={player} />
+          {controles}
+        </div>
         <PainelLog
           fonte={fonte}
           player={player}
