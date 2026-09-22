@@ -68,8 +68,19 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [agrupar, setAgrupar] = useState('nenhum');
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
+  // O que a lista na tela REALMENTE representa, preenchido quando a resposta
+  // chega. O cabeçalho lê daqui, não dos filtros atuais: senão, no intervalo
+  // entre clicar numa pasta e a resposta voltar, o título anuncia uma pasta
+  // enquanto a grade ainda mostra o conteúdo da anterior.
+  const [carregado, setCarregado] = useState({ pasta: '', busca: '', recursivo: false });
+  const [carregando, setCarregando] = useState(false);
+  const pedido = useRef(0);
 
   const carregar = useCallback(async () => {
+    // Clicar rápido entre pastas dispara buscas que podem voltar fora de ordem.
+    // Só a última pedida tem direito de escrever na tela.
+    const meu = ++pedido.current;
+    setCarregando(true);
     try {
       const r = await api.biblioteca({
         q: busca, pasta, ordem, dir, filtro, limite: 300,
@@ -77,21 +88,30 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         // sentido possível.
         recursivo: pasta ? recursivo : true,
       });
+      if (meu !== pedido.current) return;
+
+      // A fileira de recentes só aparece na raiz e sem busca: em qualquer outro
+      // lugar ela repetiria cartões que já estão logo abaixo.
+      const novosRecentes = (!busca && !pasta)
+        ? (await api.biblioteca({ ordem: 'vistos', limite: 12 })).itens
+        : [];
+      if (meu !== pedido.current) return;
+
+      // Tudo junto, num só passo: lista, cabeçalho e recentes nunca aparecem
+      // descrevendo coisas diferentes.
       setItens(r.itens);
       setSubpastas(r.subpastas ?? []);
       setDiretos(r.diretos ?? 0);
       setRaizes(r.pastas);
       setContagem(r.contagem);
       setFormatos(r.formatos ?? []);
-
-      // A fileira de recentes só aparece na raiz e sem busca: em qualquer outro
-      // lugar ela repetiria cartões que já estão logo abaixo.
-      if (!busca && !pasta) {
-        setRecentes((await api.biblioteca({ ordem: 'vistos', limite: 12 })).itens);
-      } else {
-        setRecentes([]);
-      }
-    } catch (e) { aoAvisar(String((e as Error).message)); }
+      setRecentes(novosRecentes);
+      setCarregado({ pasta, busca, recursivo: pasta ? recursivo : true });
+    } catch (e) {
+      if (meu === pedido.current) aoAvisar(String((e as Error).message));
+    } finally {
+      if (meu === pedido.current) setCarregando(false);
+    }
   }, [busca, pasta, ordem, dir, filtro, recursivo, aoAvisar]);
 
   useEffect(() => {
@@ -197,7 +217,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const semNada = raizes.length === 0;
 
   return (
-    <div className="inicio">
+    <div className={`inicio ${carregando ? 'carregando' : ''}`}>
       <header className="inicio-topo">
         <h1>Início</h1>
         <input
@@ -368,13 +388,17 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       {itens.length > 0 && (
         <section>
           <h2>
-            {busca ? `Resultados para "${busca}"`
-              : pasta ? (recursivo ? `${ultimoTrecho(pasta)} e subpastas` : ultimoTrecho(pasta))
+            {carregado.busca ? `Resultados para "${carregado.busca}"`
+              : carregado.pasta
+                ? (carregado.recursivo
+                  ? `${ultimoTrecho(carregado.pasta)} e subpastas`
+                  : ultimoTrecho(carregado.pasta))
                 : 'Tudo'}
             <small>
               {itens.length}
-              {!busca && !pasta && ` de ${contagem.total}`}
-              {pasta && !recursivo && diretos > itens.length && ` de ${diretos}`}
+              {!carregado.busca && !carregado.pasta && ` de ${contagem.total}`}
+              {carregado.pasta && !carregado.recursivo && diretos > itens.length
+                && ` de ${diretos}`}
             </small>
           </h2>
           {grupos.map((g) => (

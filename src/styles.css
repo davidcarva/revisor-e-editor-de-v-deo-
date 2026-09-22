@@ -385,6 +385,13 @@ input:focus, textarea:focus, select:focus {
 .inicio-vazio .detalhe { color: var(--fraco); font-size: 12px; line-height: 1.5; }
 
 .inicio section { margin-bottom: 28px; }
+
+/* Enquanto a resposta não chega, o conteúdo esmaece. Sem isso o título troca
+   antes da lista e o cabeçalho passa a mentir por alguns instantes. */
+.inicio section, .inicio .grade-pastas {
+  transition: opacity var(--medio) var(--curva);
+}
+.inicio.carregando section, .inicio.carregando .grade-pastas { opacity: .45; }
 .inicio h2 {
   font-size: 14px; font-weight: 600; margin: 0 0 12px;
   display: flex; align-items: baseline; gap: 10px;
