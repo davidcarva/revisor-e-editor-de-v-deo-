@@ -76,7 +76,11 @@ function arquivoDosArgumentos(argv) {
     try { return fs.statSync(p).isFile(); } catch { return false; }
   };
 
-  const soltos = argv.slice(1).filter((a) => !a.startsWith('-'));
+  // Tira só o que é MESMO uma opção do Electron. Filtrar todo argumento que
+  // comece com "-" parece equivalente e não é: "Rendered - abc.mov" chega
+  // picado, e o hífen sozinho do meio do nome sumiria junto — deixando os
+  // pedaços do caminho impossíveis de remontar.
+  const soltos = argv.slice(1).filter((a) => !/^--?[A-Za-z]/.test(a));
   for (const a of soltos) if (ehMidia(a)) return path.resolve(a);
 
   // Caminho com espaço que chegou SEM aspas vem picado em vários argumentos

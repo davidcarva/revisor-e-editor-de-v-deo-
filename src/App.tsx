@@ -208,6 +208,32 @@ export default function App() {
     } catch (e) { avisar(String((e as Error).message)); }
   };
 
+  /**
+   * O Chromium não decodifica tudo o que um editor gera: ProRes, DNxHD, MXF e
+   * AVI antigo passam pelo ffmpeg mas não pelo `<video>`. Tocar o arquivo como
+   * foi gravado é o padrão certo — mas quando o padrão não toca, cair calado
+   * numa tela preta é o pior resultado possível. Aqui a falha vira uma
+   * conversão: usa o nível que já existir, senão gera um.
+   */
+  const aoFalharVideo = useCallback(async (codigo: number) => {
+    // Só interessa "não sei decodificar isto" (SRC_NOT_SUPPORTED / DECODE).
+    if (!fonte || qualidade !== 'original') return;
+    if (codigo !== 4 && codigo !== 3) return;
+    try {
+      const { niveis } = await api.qualidades(fonte.id);
+      const pronto = niveis.find((n) => n.divisor > 1 && n.pronto);
+      if (pronto) {
+        setQualidade(pronto.nome);
+        avisar('este formato o player não decodifica direto — tocando a versão convertida');
+        return;
+      }
+      await api.gerarQualidade(fonte.id, 'metade');
+      setQualidade('metade');
+      avisar('formato que o player não abre direto (ProRes, MXF, AVI antigo) — '
+        + 'convertendo; começa a tocar sozinho quando ficar pronto');
+    } catch (e) { avisar(`não consegui abrir este arquivo: ${(e as Error).message}`); }
+  }, [fonte, qualidade, avisar]);
+
   const alternarTelaCheia = useCallback(async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -318,6 +344,7 @@ export default function App() {
             player={player}
             qualidade={qualidade}
             recarga={recarga}
+            aoFalhar={aoFalharVideo}
             aoPedirMenu={(x, y) => setMenu({ x, y })}
           />
           {controles}
@@ -401,6 +428,7 @@ export default function App() {
             player={player}
             qualidade={qualidade}
             recarga={recarga}
+            aoFalhar={aoFalharVideo}
             aoPedirMenu={(x, y) => setMenu({ x, y })}
           />
           {controles}

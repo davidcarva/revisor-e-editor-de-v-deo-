@@ -13,10 +13,12 @@ type Props = {
   qualidade: Qualidade;
   /** Muda quando o arquivo por tras da MESMA URL mudou (nivel recem-gerado). */
   recarga?: number;
+  /** `MediaError.code` quando o elemento desiste do arquivo. */
+  aoFalhar?: (codigo: number) => void;
   aoPedirMenu?: (x: number, y: number) => void;
 };
 
-export function Visor({ fonte, player, qualidade, recarga = 0, aoPedirMenu }: Props) {
+export function Visor({ fonte, player, qualidade, recarga = 0, aoFalhar, aoPedirMenu }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const faixasAudio = fonte.tracks.filter((t) => t.kind === 'audio' && t.audio_path);
   const fonteDeVideo = urlVideo(fonte.id, qualidade);
@@ -64,6 +66,12 @@ export function Visor({ fonte, player, qualidade, recarga = 0, aoPedirMenu }: Pr
           playsInline
           onClick={() => player.alternar()}
           onDoubleClick={(e) => e.preventDefault()}
+          onError={(e) => {
+            // `load()` com src vazio também dispara error; só interessa quando o
+            // elemento realmente registrou um MediaError.
+            const err = e.currentTarget.error;
+            if (err) aoFalhar?.(err.code);
+          }}
           onContextMenu={(e) => {
             if (!aoPedirMenu) return;
             e.preventDefault();

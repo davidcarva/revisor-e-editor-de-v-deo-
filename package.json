@@ -10,6 +10,8 @@
     "dev": "concurrently -k -n SERVER,VITE -c cyan,magenta \"npm:server\" \"npm:web\"",
     "build": "vite build",
     "icone": "node scripts/gerar-icone.mjs",
+    "exe": "node scripts/gerar-exe.mjs",
+    "registrar": "node scripts/registrar-windows.mjs",
     "app": "npm run build && electron electron/main.mjs",
     "atalho": "node scripts/criar-atalho.mjs",
     "teste": "node server/_test-xml.mjs && node scripts/_test-organizar.mjs",
@@ -29,6 +31,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "electron": "^33.3.1",
+    "rcedit": "^5.0.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "wait-on": "^8.0.1"

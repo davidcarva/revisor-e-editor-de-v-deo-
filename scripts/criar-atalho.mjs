@@ -12,7 +12,9 @@ import { promisify } from 'node:util';
 
 const executar = promisify(execFile);
 const RAIZ = path.join(import.meta.dirname, '..');
-const ELECTRON = path.join(RAIZ, 'node_modules', 'electron', 'dist', 'electron.exe');
+// O atalho aponta pro Revisor.exe, não pro electron.exe: é dele que o Windows
+// tira o ícone e o nome que aparecem na barra de tarefas e no Alt+Tab.
+const ELECTRON = path.join(RAIZ, 'node_modules', 'electron', 'dist', 'Revisor.exe');
 const ENTRADA = path.join(RAIZ, 'electron', 'main.mjs');
 const ICONE = path.join(RAIZ, 'build', 'revisor.ico');
 
@@ -20,11 +22,16 @@ if (process.platform !== 'win32') {
   console.error('este script é do Windows');
   process.exit(1);
 }
-for (const [rotulo, alvo] of [['electron.exe', ELECTRON], ['electron/main.mjs', ENTRADA]]) {
-  if (!fs.existsSync(alvo)) {
-    console.error(`não encontrei ${rotulo} em ${alvo}\nrode \`npm install\` primeiro`);
-    process.exit(1);
-  }
+// `npm install` reescreve node_modules e leva o Revisor.exe junto; gerar de
+// novo é barato e evita um atalho apontando pro vazio.
+if (!fs.existsSync(ELECTRON)) {
+  console.log('sem Revisor.exe; gerando…');
+  const { gerarExe } = await import('./gerar-exe.mjs');
+  await gerarExe();
+}
+if (!fs.existsSync(ENTRADA)) {
+  console.error(`não encontrei electron/main.mjs em ${ENTRADA}`);
+  process.exit(1);
 }
 if (!fs.existsSync(path.join(RAIZ, 'dist', 'index.html'))) {
   console.error('não existe dist/ — rode `npm run build` antes, senão o atalho abre em branco');
