@@ -8,6 +8,8 @@ import { api, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/ap
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
 import { BarraSelecao } from './Organizar';
+import { DialogoPreparar, FaixaFila } from './Preparo';
+import { PainelEspaco } from './Espaco';
 import { Detalhes, Icones, LadoALado, VISOES, type Visual } from './Visoes';
 
 const tamanhoCurto = (n: number) =>
@@ -65,6 +67,8 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [ocupado, setOcupado] = useState(false);
   const [filtro, setFiltro] = useState('');
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
+  const [preparando, setPreparando] = useState<string[] | null>(null);
+  const [verEspaco, setVerEspaco] = useState(false);
   const [agrupar, setAgrupar] = useState('nenhum');
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
@@ -231,6 +235,9 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
             Atualizar
           </button>
           <button onClick={adicionarPasta} disabled={ocupado}>Adicionar pasta…</button>
+          <button onClick={() => setVerEspaco(true)} title="Ver e liberar o espaço que o app ocupa">
+            Espaço…
+          </button>
           {noElectron() && (
             <button
               className="primario"
@@ -352,9 +359,24 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
           subpastas={subpastas}
           aoAvisar={aoAvisar}
           aoLimpar={() => setSelecao(new Set())}
+          aoPreparar={() => setPreparando(
+            itens.filter((m) => selecao.has(m.id)).map((m) => m.caminho),
+          )}
           aoTerminar={async (msg) => { aoAvisar(msg); setSelecao(new Set()); await carregar(); }}
         />
       )}
+
+      {preparando && (
+        <DialogoPreparar
+          caminhos={preparando}
+          aoAvisar={aoAvisar}
+          aoFechar={() => { setPreparando(null); setSelecao(new Set()); }}
+        />
+      )}
+      {verEspaco && (
+        <PainelEspaco aoAvisar={aoAvisar} aoFechar={() => setVerEspaco(false)} />
+      )}
+      <FaixaFila aoAvisar={aoAvisar} />
 
       {recentes.length > 0 && (
         <section>

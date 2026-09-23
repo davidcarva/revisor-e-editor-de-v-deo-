@@ -12,10 +12,13 @@ type Props = {
   subpastas: Subpasta[];
   aoTerminar: (msg: string) => void;
   aoLimpar: () => void;
+  aoPreparar: () => void;
   aoAvisar: (msg: string) => void;
 };
 
-export function BarraSelecao({ ids, pastaAtual, subpastas, aoTerminar, aoLimpar, aoAvisar }: Props) {
+export function BarraSelecao({
+  ids, pastaAtual, subpastas, aoTerminar, aoLimpar, aoPreparar, aoAvisar,
+}: Props) {
   const [dialogo, setDialogo] = useState<'mover' | 'renomear' | null>(null);
   const [podeDesfazer, setPodeDesfazer] = useState<{ tipo: string; quantos: number } | null>(null);
 
@@ -49,6 +52,9 @@ export function BarraSelecao({ ids, pastaAtual, subpastas, aoTerminar, aoLimpar,
     <>
       <div className="barra-selecao">
         <strong>{ids.length} selecionado{ids.length > 1 ? 's' : ''}</strong>
+        <button className="primario" onClick={aoPreparar} title="Separar as faixas de áudio agora, pra não esperar na hora de abrir">
+          Preparar…
+        </button>
         <button onClick={() => setDialogo('mover')}>Mover para…</button>
         <button onClick={() => setDialogo('renomear')}>Renomear…</button>
         <button onClick={() => marcar('favorito', true)} title="Marcar como favorito">★ Favoritar</button>

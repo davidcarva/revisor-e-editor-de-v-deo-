@@ -16,6 +16,8 @@ import { readWindow } from './peaks.mjs';
 import { proximoInicio } from './segmentos.mjs';
 import * as transcricao from './transcricao.mjs';
 import * as biblioteca from './biblioteca.mjs';
+import * as fila from './fila.mjs';
+import * as cache from './cache.mjs';
 import { buildFcp7Xml, buildMarkerCsv } from './premiere-xml.mjs';
 
 const PORT = Number(process.env.REVISOR_PORT || 5273);
@@ -173,13 +175,16 @@ app.get('/api/events', (req, res) => {
   // O progresso da transcricao vai pelo MESMO canal, marcado com `tipo` pra a
   // interface saber qual dos dois chegou.
   const enviaTransc = (ev) => envia({ ...ev, tipo: 'transcricao' });
+  const enviaFila = (ev) => envia({ ...ev, tipo: 'fila' });
   ingest.events.on('progress', envia);
   transcricao.events.on('transcricao', enviaTransc);
+  fila.events.on('fila', enviaFila);
   const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
   req.on('close', () => {
     clearInterval(ping);
     ingest.events.off('progress', envia);
     transcricao.events.off('transcricao', enviaTransc);
+    fila.events.off('fila', enviaFila);
   });
 });
 
@@ -587,6 +592,45 @@ app.post('/api/sources/:id/export/:formato', rota(async (req, res) => {
   await fsp.writeFile(destino, gerarExport(src, formato), 'utf8');
   res.json({ ok: true, arquivo: destino });
 }));
+
+// ------------------------------------------------------- fila de preparo
+//
+// Preparar em lote é o que tira a espera da hora de abrir: as faixas de áudio
+// já separadas, as ondas já desenhadas. Um arquivo de cada vez, porque o
+// ffmpeg já ocupa a máquina inteira sozinho.
+
+app.get('/api/fila', rota((req, res) => res.json(fila.estado())));
+
+app.post('/api/fila', rota((req, res) => {
+  const caminhos = (req.body?.caminhos || []).map(String).filter(Boolean);
+  if (!caminhos.length) return res.status(400).json({ erro: 'informe os caminhos' });
+  res.json(fila.enfileirar(caminhos, { comVideo: !!req.body?.comVideo }));
+}));
+
+/** Quanto isso vai custar em disco, antes de começar. */
+app.post('/api/fila/estimativa', rota(async (req, res) => {
+  const caminhos = (req.body?.caminhos || []).map(String).filter(Boolean);
+  const { porHora, porByte } = await cache.resumo();
+  res.json({
+    audio: fila.estimativa(caminhos, { comVideo: false, porHora, porByte }),
+    revisao: fila.estimativa(caminhos, { comVideo: true, porHora, porByte }),
+  });
+}));
+
+app.delete('/api/fila', rota((req, res) =>
+  res.json(req.query.feitos === '1' ? fila.limpar() : fila.cancelar())));
+
+// -------------------------------------------------------- espaço em disco
+
+app.get('/api/cache', rota(async (req, res) => res.json(await cache.resumo())));
+
+app.delete('/api/cache', rota(async (req, res) => {
+  const ids = req.query.ids ? String(req.query.ids).split(',').map(Number).filter(Boolean) : null;
+  const tipos = String(req.query.tipos || 'proxies').split(',').filter(Boolean);
+  res.json(await cache.limpar({ ids, tipos }));
+}));
+
+app.delete('/api/cache/orfaos', rota(async (req, res) => res.json(await cache.limparOrfaos())));
 
 // ------------------------------------------------- navegador de arquivos
 

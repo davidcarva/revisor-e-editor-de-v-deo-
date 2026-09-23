@@ -100,13 +100,18 @@ export function start(sourceId, { force = false, comVideo = true } = {}) {
   };
   jobs.set(sourceId, ctl);
 
-  run(sourceId, ctl, force, comVideo)
+  // `ctl.pronto` existe pra fila poder esperar o fim de um item antes de
+  // começar o próximo. Nunca rejeita: o erro já vira estado 'erro' aqui, e
+  // deixá-lo escapar derrubaria a fila inteira por causa de um arquivo ruim.
+  ctl.pronto = run(sourceId, ctl, force, comVideo)
     .then(() => {
       if (!ctl.cancelled) report(sourceId, { status: 'pronto', progress: 1, stage: null });
+      return { ok: true };
     })
     .catch((err) => {
       if (ctl.cancelled) report(sourceId, { status: 'cancelado', stage: null });
       else report(sourceId, { status: 'erro', stage: null, error: String(err.message || err) });
+      return { ok: false, erro: String(err.message || err) };
     })
     .finally(() => jobs.delete(sourceId));
 

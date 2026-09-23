@@ -65,6 +65,8 @@ export default function App() {
   // Progresso do ingest chega por SSE. Quando termina, recarrega a fonte pra
   // pegar proxy/miniaturas/picos que acabaram de nascer.
   useEffect(() => ouvirProgresso((ev) => {
+    // A fila de preparo tem o próprio painel; aqui só passaria batido.
+    if (ev.tipo === 'fila') return;
     if (ev.tipo === 'transcricao') {
       setFonte((f) => (f && f.id === ev.sourceId
         ? {

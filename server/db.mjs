@@ -239,6 +239,29 @@ export function setSourceAssets(id, { proxy_path, thumbs_path }) {
     .run(proxy_path ?? cur.proxy_path, thumbs_path ?? cur.thumbs_path, id);
 }
 
+/**
+ * Esquece os arquivos derivados que foram apagados do cache.
+ *
+ * `setSourceAssets` nao serve aqui: ele usa `?? atual`, entao passar null
+ * mantem o valor. Apagar o proxy do disco e deixar o caminho no banco faria o
+ * app oferecer uma qualidade que nao existe mais.
+ */
+export function limparAssets(id, { proxy = false, thumbs = false } = {}) {
+  const campos = [];
+  if (proxy) campos.push('proxy_path=NULL');
+  if (thumbs) campos.push('thumbs_path=NULL');
+  if (!campos.length) return;
+  handle().prepare(`UPDATE sources SET ${campos.join(', ')} WHERE id=?`).run(id);
+}
+
+export function limparAssetsDaFaixa(id, { picos = false, audio = false } = {}) {
+  const campos = [];
+  if (picos) campos.push('peaks_path=NULL');
+  if (audio) campos.push('audio_path=NULL');
+  if (!campos.length) return;
+  handle().prepare(`UPDATE tracks SET ${campos.join(', ')} WHERE id=?`).run(id);
+}
+
 export function deleteSource(id) {
   handle().prepare('DELETE FROM sources WHERE id=?').run(id);
 }

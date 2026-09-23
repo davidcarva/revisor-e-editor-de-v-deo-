@@ -108,6 +108,58 @@ export type PassoPlano = {
 
 export type ItemArquivo = { nome: string; dir: boolean; caminho: string; size: number };
 
+export type EstadoItemFila =
+  'esperando' | 'preparando' | 'pronto' | 'erro' | 'cancelado';
+
+export type ItemFila = {
+  caminho: string;
+  nome: string;
+  comVideo: boolean;
+  estado: EstadoItemFila;
+  sourceId: number | null;
+  erro: string | null;
+};
+
+export type EstadoFila = {
+  rodando: boolean;
+  total: number;
+  feitos: number;
+  atual: string | null;
+  itens: ItemFila[];
+};
+
+export type Estimativa = {
+  horas: number;
+  total: number;
+  comDuracao: number;
+  porTamanho: number;
+  desconhecidos: number;
+  bytes: number;
+};
+
+export type TipoCache =
+  'proxies' | 'audio' | 'picos' | 'miniaturas' | 'transcricao' | 'posters' | 'outros';
+
+export type FonteNoCache = {
+  id: number;
+  nome: string;
+  caminho: string;
+  duracao: number;
+  bytesOriginal: number;
+  total: number;
+  porTipo: Partial<Record<TipoCache, number>>;
+};
+
+export type ResumoCache = {
+  raiz: string;
+  total: number;
+  porTipo: Partial<Record<TipoCache, number>>;
+  porHora: Partial<Record<TipoCache, number>>;
+  porByte: Partial<Record<TipoCache, number>>;
+  orfaos: number;
+  fontes: FonteNoCache[];
+};
+
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
   const texto = await r.text();
@@ -217,6 +269,26 @@ export const api = {
   marcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) =>
     pedir<Midia>(`/api/biblioteca/${id}/marca`, json('PATCH', { campo, valor })),
 
+  // ------------------------------------------------- fila de preparo
+  fila: () => pedir<EstadoFila>('/api/fila'),
+  enfileirar: (caminhos: string[], comVideo: boolean) =>
+    pedir<EstadoFila & { novos: number }>('/api/fila', json('POST', { caminhos, comVideo })),
+  estimativaFila: (caminhos: string[]) =>
+    pedir<{ audio: Estimativa; revisao: Estimativa }>(
+      '/api/fila/estimativa', json('POST', { caminhos })),
+  cancelarFila: () => pedir<EstadoFila>('/api/fila', { method: 'DELETE' }),
+  limparFeitos: () => pedir<EstadoFila>('/api/fila?feitos=1', { method: 'DELETE' }),
+
+  // ---------------------------------------------------- espaço em disco
+  cache: () => pedir<ResumoCache>('/api/cache'),
+  limparCache: (ids: number[] | null, tipos: TipoCache[]) => {
+    const q = new URLSearchParams({ tipos: tipos.join(',') });
+    if (ids?.length) q.set('ids', ids.join(','));
+    return pedir<{ apagados: number; bytes: number }>(`/api/cache?${q}`, { method: 'DELETE' });
+  },
+  limparOrfaos: () =>
+    pedir<{ apagados: number; bytes: number }>('/api/cache/orfaos', { method: 'DELETE' }),
+
   adicionarPasta: (caminho: string) =>
     pedir<{ achados: number; pasta: string }>('/api/biblioteca/pastas', json('POST', { caminho })),
   removerPasta: (caminho: string) =>
@@ -264,7 +336,9 @@ export const urlFolha = (id: number, folha: string) => `/media/${id}/thumbs/${fo
 
 /** Progresso do ingest chega por SSE — sem polling. */
 export type EventoProgresso = {
-  tipo?: 'transcricao';
+  // Três coisas diferentes passam pelo mesmo canal; `tipo` é o que separa.
+  // Sem ele é ingest de uma fonte.
+  tipo?: 'transcricao' | 'fila';
   sourceId: number;
   status?: string;
   progress?: number;
