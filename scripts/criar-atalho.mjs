@@ -23,8 +23,12 @@ if (process.platform !== 'win32') {
   process.exit(1);
 }
 // `npm install` reescreve node_modules e leva o Revisor.exe junto; gerar de
-// novo é barato e evita um atalho apontando pro vazio.
-if (!fs.existsSync(ELECTRON)) {
+// novo é barato e evita um atalho apontando pro vazio. O ponto de entrada mora
+// lá dentro também, então some junto — e sem ele o atalho abre uma janela vazia
+// do Electron em vez do app.
+const PONTO_DE_ENTRADA = path.join(RAIZ, 'node_modules', 'electron', 'dist',
+  'resources', 'app', 'principal.mjs');
+if (!fs.existsSync(ELECTRON) || !fs.existsSync(PONTO_DE_ENTRADA)) {
   console.log('sem Revisor.exe; gerando…');
   const { gerarExe } = await import('./gerar-exe.mjs');
   await gerarExe();
@@ -57,7 +61,7 @@ foreach ($d in $destinos) {
   if (-not (Test-Path $d)) { continue }
   $lnk = $shell.CreateShortcut((Join-Path $d 'Revisor.lnk'))
   $lnk.TargetPath       = ${ps(ELECTRON)}
-  $lnk.Arguments        = '"' + ${ps(ENTRADA)} + '"'
+  $lnk.Arguments        = ''
   $lnk.WorkingDirectory = ${ps(RAIZ)}
   $lnk.IconLocation     = ${ps(ICONE)} + ',0'
   $lnk.Description      = 'Revisor — revisão de vídeo longo e ponte com o Premiere'

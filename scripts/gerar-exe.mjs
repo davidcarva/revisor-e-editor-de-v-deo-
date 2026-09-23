@@ -14,7 +14,9 @@
 // projeto.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const executar = promisify(execFile);
@@ -65,8 +67,43 @@ export async function gerarExe({ silencioso = false } = {}) {
     '--set-product-version', versaoWin,
   ]);
 
+  await instalarPontoDeEntrada(log);
   log(`Revisor.exe pronto em ${EXE}`);
   return EXE;
+}
+
+/**
+ * Faz o executável achar o app sozinho, sem receber o caminho do main.mjs.
+ *
+ * É o que conserta o duplo clique. Quando você escolhe um .exe em "Abrir com",
+ * o Windows monta o comando `"o.exe" "%1"` — e não há como pedir a ele que
+ * passe um argumento a mais antes do arquivo. Sem ponto de entrada próprio, o
+ * Electron pega esse `%1` e tenta CARREGAR o .mp4 como se fosse código, que é
+ * exatamente o `ERR_UNKNOWN_FILE_EXTENSION` que aparecia.
+ *
+ * O Electron procura `resources/app` antes de olhar a linha de comando. Um
+ * `package.json` de duas linhas ali resolve, e o `main.mjs` continua sendo lido
+ * da pasta do projeto — nada é copiado, editar o código continua valendo na
+ * hora.
+ */
+async function instalarPontoDeEntrada(log) {
+  const dir = path.join(DIST_ELECTRON, 'resources', 'app');
+  await fsp.mkdir(dir, { recursive: true });
+
+  const alvo = pathToFileURL(path.join(RAIZ, 'electron', 'main.mjs')).href;
+  await fsp.writeFile(path.join(dir, 'package.json'), `${JSON.stringify({
+    name: 'revisor',
+    version,
+    main: 'principal.mjs',
+  }, null, 2)}\n`, 'utf8');
+
+  // O caminho vai como URL de arquivo: `import` de caminho absoluto do Windows
+  // (com letra de unidade) não funciona, e URL aguenta espaço e acento.
+  await fsp.writeFile(path.join(dir, 'principal.mjs'),
+    '// Gerado por scripts/gerar-exe.mjs — não edite.\n'
+    + `import ${JSON.stringify(alvo)};\n`, 'utf8');
+
+  log(`ponto de entrada em ${dir}`);
 }
 
 if (import.meta.filename === process.argv[1]) {

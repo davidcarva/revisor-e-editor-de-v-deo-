@@ -31,7 +31,10 @@ const EXTS = [
   '.wav', '.mp3', '.m4a', '.aac', '.flac', '.aiff', '.aif', '.ogg', '.opus',
 ];
 
-const COMANDO = `"${EXE}" "${ENTRADA}" "%1"`;
+// Sem o caminho do main.mjs: o `resources/app` que o `npm run exe` cria faz o
+// executável achar o app sozinho. É o mesmo formato que o Windows monta quando
+// você escolhe o .exe em "Abrir com", então os dois caminhos batem.
+const COMANDO = `"${EXE}" "%1"`;
 const ICONE_REG = `${ICONE},0`;
 
 const HKCU = 'HKCU\\Software';
