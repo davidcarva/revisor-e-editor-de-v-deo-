@@ -166,6 +166,9 @@ const MIGRACOES = [
   ['tracks', 'idioma', 'TEXT'],
   ['biblioteca', 'favorito', 'INTEGER NOT NULL DEFAULT 0'],
   ['biblioteca', 'revisado', 'INTEGER NOT NULL DEFAULT 0'],
+  // Vitrine da pagina inicial: quais videos aparecem em destaque la em cima.
+  ['biblioteca', 'destaque', 'INTEGER NOT NULL DEFAULT 0'],
+  ['biblioteca', 'destaque_em', 'TEXT'],
 ];
 
 function migrar(d) {
@@ -391,11 +394,27 @@ export function setSondagem(id, s) {
 export const setPoster = (id, caminho) =>
   handle().prepare('UPDATE biblioteca SET poster=? WHERE id=?').run(caminho, id);
 
+const SINALIZADORES = new Set(['favorito', 'revisado', 'destaque']);
+
 export function setSinalizador(id, campo, valor) {
-  if (campo !== 'favorito' && campo !== 'revisado') throw new Error('campo invalido');
+  if (!SINALIZADORES.has(campo)) throw new Error('campo invalido');
   handle().prepare(`UPDATE biblioteca SET ${campo}=? WHERE id=?`).run(valor ? 1 : 0, id);
+  // A vitrine mostra os destaques na ordem em que foram escolhidos, nao na
+  // ordem em que os arquivos foram gravados: quem destaca esta montando uma
+  // fileira, e a fileira e dele.
+  if (campo === 'destaque') {
+    handle().prepare(`UPDATE biblioteca SET destaque_em=${valor ? "datetime('now')" : 'NULL'} WHERE id=?`)
+      .run(id);
+  }
   return getMidia(id);
 }
+
+/** Os videos escolhidos pra vitrine, na ordem em que foram escolhidos. */
+export const listarDestaques = (limite = 8) => handle().prepare(`
+  SELECT * FROM biblioteca
+  WHERE destaque=1 AND ausente=0
+  ORDER BY destaque_em DESC
+  LIMIT ?`).all(limite);
 
 /**
  * Registra que um arquivo mudou de lugar ou de nome.
@@ -460,6 +479,7 @@ export function listarMidia({
   const cond = ['ausente = 0'];
   const args = [];
   if (filtro === 'favoritos') cond.push('favorito = 1');
+  if (filtro === 'destaques') cond.push('destaque = 1');
   if (filtro === 'naoRevisados') cond.push('revisado = 0');
   if (filtro === 'revisados') cond.push('revisado = 1');
   if (filtro === 'video' || filtro === 'audio') { cond.push('tipo = ?'); args.push(filtro); }

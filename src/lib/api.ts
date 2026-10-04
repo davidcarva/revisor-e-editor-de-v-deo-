@@ -92,6 +92,7 @@ export type Midia = {
   visto_em: string | null;
   favorito: number;
   revisado: number;
+  destaque?: number;
 };
 
 export type Pasta = { caminho: string; adicionada: string };
@@ -280,8 +281,11 @@ export const api = {
     }>(`/api/biblioteca/arquivos?${q}`, { method: 'DELETE' });
   },
 
-  marcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) =>
+  marcar: (id: number, campo: 'favorito' | 'revisado' | 'destaque', valor: boolean) =>
     pedir<Midia>(`/api/biblioteca/${id}/marca`, json('PATCH', { campo, valor })),
+  /** A vitrine: os videos escolhidos a dedo pro topo da pagina. */
+  destaques: (limite = 8) =>
+    pedir<{ itens: Midia[] }>(`/api/biblioteca/destaques?limite=${limite}`),
 
   // ------------------------------------------------- fila de preparo
   fila: () => pedir<EstadoFila>('/api/fila'),

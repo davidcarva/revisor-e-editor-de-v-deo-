@@ -12,6 +12,7 @@ import { BarraSelecao, DialogoApagar } from './Organizar';
 import { useLaco } from '../lib/laco';
 import { DialogoPreparar, FaixaFila } from './Preparo';
 import { PainelEspaco } from './Espaco';
+import { Vitrine } from './Vitrine';
 import { Detalhes, Icones, LadoALado, VISOES, type Visual } from './Visoes';
 
 const tamanhoCurto = (n: number) =>
@@ -74,6 +75,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [apagando, setApagando] = useState<number[] | null>(null);
   // Quantas mudanças o vigia viu desde a última releitura — só pra avisar.
   const [doDisco, setDoDisco] = useState(0);
+  const [marcas, setMarcas] = useState(0);
   const [agrupar, setAgrupar] = useState('nenhum');
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
@@ -217,9 +219,14 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     ultimoClique.current = id;
   };
 
-  const marcarUm = async (id: number, campo: 'favorito' | 'revisado', valor: boolean) => {
-    try { await api.marcar(id, campo, valor); await carregar(); }
-    catch (err) { aoAvisar(String((err as Error).message)); }
+  const marcarUm = async (id: number, campo: 'favorito' | 'revisado' | 'destaque', valor: boolean) => {
+    try {
+      await api.marcar(id, campo, valor);
+      // A vitrine tem a própria consulta: sem este contador ela não ficaria
+      // sabendo que a estrela de um cartão lá embaixo mudou.
+      if (campo === 'destaque') setMarcas((n) => n + 1);
+      await carregar();
+    } catch (err) { aoAvisar(String((err as Error).message)); }
   };
 
   // Esc limpa a seleção: é a saída óbvia quando se entra nela sem querer.
@@ -459,6 +466,16 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       )}
       <FaixaFila aoAvisar={aoAvisar} />
 
+      {!semNada && (
+        <Vitrine
+          versao={marcas}
+          contagem={{ total: contagem.total, vistos: contagem.vistos }}
+          aoAbrir={aoAbrir}
+          aoPreparar={(caminhos) => setPreparando(caminhos)}
+          aoAvisar={aoAvisar}
+        />
+      )}
+
       {recentes.length > 0 && (
         <section>
           <h2>Mídia recente</h2>
@@ -543,7 +560,7 @@ type PropsGrade = {
   aoAbrir: (c: string) => void;
   selecao: Set<number>;
   aoSelecionar: (id: number, e: React.MouseEvent) => void;
-  aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
+  aoMarcar: (id: number, campo: 'favorito' | 'revisado' | 'destaque', valor: boolean) => void;
   visual: Visual;
   ordem?: string;
   dir?: string;
@@ -585,7 +602,7 @@ type PropsCartao = {
   selecionado: boolean;
   modoSelecao: boolean;
   aoSelecionar: (id: number, e: React.MouseEvent) => void;
-  aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
+  aoMarcar: (id: number, campo: 'favorito' | 'revisado' | 'destaque', valor: boolean) => void;
 };
 
 function Cartao({
@@ -683,10 +700,10 @@ function Cartao({
       >{selecionado ? '✓' : ''}</span>
 
       <button
-        className={`cartao-estrela ${midia.favorito ? 'on' : ''}`}
-        title={midia.favorito ? 'Tirar dos favoritos' : 'Favoritar'}
-        onClick={(e) => { e.stopPropagation(); aoMarcar(midia.id, 'favorito', !midia.favorito); }}
-      >{midia.favorito ? '★' : '☆'}</button>
+        className={`cartao-estrela ${midia.destaque ? 'on' : ''}`}
+        title={midia.destaque ? 'Tirar da vitrine' : 'Pôr na vitrine, lá em cima'}
+        onClick={(e) => { e.stopPropagation(); aoMarcar(midia.id, 'destaque', !midia.destaque); }}
+      >{midia.destaque ? '★' : '☆'}</button>
     </motion.div>
   );
 }

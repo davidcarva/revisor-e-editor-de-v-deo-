@@ -353,6 +353,10 @@ app.get('/api/sources/:id/segmento', rota(async (req, res) => {
 
 // ------------------------------------------------------------ biblioteca
 
+/** A vitrine da pagina inicial: os videos que voce escolheu destacar. */
+app.get('/api/biblioteca/destaques', rota((req, res) =>
+  res.json({ itens: db.listarDestaques(Number(req.query.limite) || 8) })));
+
 app.get('/api/biblioteca', rota((req, res) => {
   const pasta = String(req.query.pasta || '');
   // Buscar é sempre recursivo: procurar um nome e não achar porque o arquivo
