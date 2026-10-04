@@ -189,7 +189,16 @@ export function Timeline({
       g.fillRect(0, yVideo, largura, H_VIDEO);
       g.fillStyle = '#3d4452';
       g.font = '11px system-ui';
-      g.fillText('gerando miniaturas…', 8, yVideo + H_VIDEO / 2);
+      // "gerando" so quando esta MESMO gerando. No modo assistir ninguem pediu
+      // miniatura nenhuma, e dizer que ela esta a caminho e esperar por um
+      // progresso que nunca vem.
+      const gerando = fonte.status === 'processando' && fonte.stage === 'proxy';
+      g.fillText(
+        gerando
+          ? `gerando miniaturas… ${Math.round((fonte.progress ?? 0) * 100)}%`
+          : 'sem miniaturas — use "Preparar revisão" para gerá-las',
+        8, yVideo + H_VIDEO / 2,
+      );
     }
 
     // --- ondas
@@ -257,7 +266,10 @@ export function Timeline({
       }
     }
   }, [largura, altura, janela, faixasAudio, marcadores, thumbs, temVideo,
-      yVideo, yFaixas, paraX, base, tcInicial, pegarFolha, fonte.status, versaoPicos, versaoFolhas]);
+      yVideo, yFaixas, paraX, base, tcInicial, pegarFolha,
+      // `stage` e `progress` entram porque o aviso de miniatura os mostra: sem
+      // eles o texto congelaria na primeira porcentagem desenhada.
+      fonte.status, fonte.stage, fonte.progress, versaoPicos, versaoFolhas]);
 
   useEffect(() => { desenharConteudo(); }, [desenharConteudo]);
 
