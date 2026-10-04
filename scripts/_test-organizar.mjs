@@ -144,6 +144,34 @@ console.log('\narquivo que saiu do lugar por fora:');
   console.log(`  erro reportado: ${r.erros[0].erro}`);
 }
 
+// ------------------------------------------------------------------ apagar
+//
+// A unica operacao do app que nao tem volta pelo `desfazer`. Por isso ela tem
+// teste: o que se garante aqui e que ela apaga o que foi pedido e NADA mais.
+console.log('\napagar:');
+{
+  const antes = fs.readdirSync(path.join(RAIZ, 'origem')).length;
+  const alvo = porNome('gravacao c');
+  // A pasta vizinha inteira e a testemunha: apagar um arquivo nao pode mexer
+  // em nada fora dele.
+  const vizinhos = fs.readdirSync(path.join(RAIZ, 'destino')).sort();
+
+  const r = await biblioteca.apagar([alvo.id], { permanente: true });
+  ok(r.permanente === true, 'relata que foi permanente');
+  ok(r.apagados.length === 1 && r.erros.length === 0,
+    `apagou 1, sem erro (${JSON.stringify(r.erros)})`);
+  ok(!existe(alvo.caminho), 'o arquivo saiu do disco');
+  ok(String(fs.readdirSync(path.join(RAIZ, 'destino')).sort()) === String(vizinhos),
+    `a pasta vizinha ficou intacta (${vizinhos.length} arquivos)`);
+  ok(fs.readdirSync(path.join(RAIZ, 'origem')).length === antes - 1,
+    'so um arquivo saiu da pasta');
+  ok(!porNome('gravacao c'), 'saiu do catalogo tambem');
+
+  const sumido = await biblioteca.apagar([alvo.id], { permanente: true });
+  ok(sumido.apagados.length === 0 && sumido.erros.length === 0,
+    'apagar de novo o que ja sumiu nao estoura nem inventa um sucesso');
+}
+
 db.fechar();   // o WAL segura arquivos; sem fechar, o rm falha com EBUSY
 await fsp.rm(RAIZ, { recursive: true, force: true });
 console.log(`\n${falhas === 0 ? 'tudo certo' : `${falhas} falha(s)`}`);

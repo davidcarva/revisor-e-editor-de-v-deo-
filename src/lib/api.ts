@@ -266,6 +266,20 @@ export const api = {
       '/api/biblioteca/desfazer', json('POST')),
   novaPasta: (pai: string, nome: string) =>
     pedir<{ pasta: string }>('/api/biblioteca/nova-pasta', json('POST', { pai, nome })),
+  /**
+   * Apaga arquivos de verdade. Lixeira por padrao; `permanente` nao volta.
+   * Nao passa pelo desfazer: nao ha pra onde voltar.
+   */
+  apagarArquivos: (ids: number[], permanente: boolean) => {
+    const q = new URLSearchParams({ ids: ids.join(',') });
+    if (permanente) q.set('permanente', '1');
+    return pedir<{
+      apagados: { id: number; nome: string; caminho: string }[];
+      erros: { id: number; nome: string; erro: string }[];
+      permanente: boolean;
+    }>(`/api/biblioteca/arquivos?${q}`, { method: 'DELETE' });
+  },
+
   marcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) =>
     pedir<Midia>(`/api/biblioteca/${id}/marca`, json('PATCH', { campo, valor })),
 
@@ -338,7 +352,7 @@ export const urlFolha = (id: number, folha: string) => `/media/${id}/thumbs/${fo
 export type EventoProgresso = {
   // Três coisas diferentes passam pelo mesmo canal; `tipo` é o que separa.
   // Sem ele é ingest de uma fonte.
-  tipo?: 'transcricao' | 'fila';
+  tipo?: 'transcricao' | 'fila' | 'biblioteca';
   sourceId: number;
   status?: string;
   progress?: number;
@@ -347,6 +361,10 @@ export type EventoProgresso = {
   progresso?: number;
   erro?: string | null;
   idioma?: string | null;
+  /** Só em `tipo: 'biblioteca'`: o vigia viu o disco mudar. */
+  novos?: number;
+  sumiram?: number;
+  caminhos?: string[];
 };
 
 export function ouvirProgresso(aoReceber: (ev: EventoProgresso) => void) {

@@ -1118,3 +1118,106 @@ input:focus, textarea:focus, select:focus {
   font-size: 10px;
 }
 .fila-erro { margin-left: auto; border: none; background: none; color: var(--vermelho); font-size: 11px; }
+
+/* ------------------------------------------------ laço, vigia e apagar */
+
+/* A caixa do laço vive em coordenadas do DOCUMENTO (position:absolute no
+   corpo da página), não da janela: assim ela continua ancorada no mesmo lugar
+   quando a lista rola durante o arrasto. */
+.laco {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid var(--realce);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--realce) 10%, transparent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Arrastar sobre a grade selecionaria o texto dos nomes junto. */
+body.lacando { user-select: none; cursor: crosshair; }
+body.lacando .cartao, body.lacando .icone, body.lacando .ladrilho { cursor: crosshair; }
+
+.aviso-disco {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--borda-forte);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--painel) 88%, transparent);
+  backdrop-filter: blur(10px);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fraco);
+}
+.disco-ponto {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--verde);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--verde) 60%, transparent);
+  animation: eco 1.8s var(--curva) infinite;
+}
+@keyframes eco {
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* --- diálogo de apagar --- */
+.apagar-lista {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  background: var(--painel2);
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
+.apagar-lista li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apagar-mais { color: var(--apagado); font-style: italic; }
+
+.apagar-opcao {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  cursor: pointer;
+  transition: border-color var(--rapido) var(--curva), background var(--rapido) var(--curva);
+}
+.apagar-opcao:hover { border-color: var(--borda-forte); }
+.apagar-opcao.perigosa {
+  border-color: color-mix(in srgb, var(--vermelho) 45%, var(--borda));
+  background: color-mix(in srgb, var(--vermelho) 7%, transparent);
+}
+.apagar-opcao input { accent-color: var(--vermelho); margin-top: 2px; }
+.apagar-opcao span { display: grid; gap: 3px; }
+.apagar-opcao strong { font-size: 13px; }
+.apagar-opcao small { color: var(--apagado); font-size: 11.5px; line-height: 1.5; }
+.apagar-opcao.perigosa small { color: var(--vermelho); }
+
+.apagar-confirmacao {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vermelho) 45%, var(--borda));
+  border-radius: var(--raio);
+  background: var(--painel2);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+.apagar-confirmacao:focus { outline: none; border-color: var(--vermelho); }
+.apagar-confirmacao::placeholder { letter-spacing: normal; color: var(--apagado); }

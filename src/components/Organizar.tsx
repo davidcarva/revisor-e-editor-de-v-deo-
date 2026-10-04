@@ -4,6 +4,7 @@
 // sem passar por um plano: você vê o antes/depois, confirma, e só então o disco
 // é tocado. O último lote sempre pode voltar.
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import { api, type PassoPlano, type Subpasta } from '../lib/api';
 
 type Props = {
@@ -13,11 +14,12 @@ type Props = {
   aoTerminar: (msg: string) => void;
   aoLimpar: () => void;
   aoPreparar: () => void;
+  aoApagar: () => void;
   aoAvisar: (msg: string) => void;
 };
 
 export function BarraSelecao({
-  ids, pastaAtual, subpastas, aoTerminar, aoLimpar, aoPreparar, aoAvisar,
+  ids, pastaAtual, subpastas, aoTerminar, aoLimpar, aoPreparar, aoApagar, aoAvisar,
 }: Props) {
   const [dialogo, setDialogo] = useState<'mover' | 'renomear' | null>(null);
   const [podeDesfazer, setPodeDesfazer] = useState<{ tipo: string; quantos: number } | null>(null);
@@ -50,8 +52,19 @@ export function BarraSelecao({
 
   return (
     <>
-      <div className="barra-selecao">
-        <strong>{ids.length} selecionado{ids.length > 1 ? 's' : ''}</strong>
+      <motion.div
+        className="barra-selecao"
+        initial={{ y: 70, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+      >
+        {/* O número pula a cada mudança: é o retorno de que o laço pegou. */}
+        <motion.strong
+          key={ids.length}
+          initial={{ scale: 1.25 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 600, damping: 20 }}
+        >{ids.length} selecionado{ids.length > 1 ? 's' : ''}</motion.strong>
         <button className="primario" onClick={aoPreparar} title="Separar as faixas de áudio agora, pra não esperar na hora de abrir">
           Preparar…
         </button>
@@ -60,6 +73,9 @@ export function BarraSelecao({
         <button onClick={() => marcar('favorito', true)} title="Marcar como favorito">★ Favoritar</button>
         <button onClick={() => marcar('revisado', true)} title="Marcar como já revisado">✓ Revisado</button>
         <button onClick={() => marcar('revisado', false)}>Desmarcar</button>
+        <button className="perigo" onClick={aoApagar} title="Apagar os arquivos do disco">
+          Apagar…
+        </button>
         <span className="barra-sep" />
         {podeDesfazer && (
           <button
@@ -69,7 +85,7 @@ export function BarraSelecao({
           >↩ Desfazer {podeDesfazer.tipo}</button>
         )}
         <button onClick={aoLimpar}>Limpar seleção</button>
-      </div>
+      </motion.div>
 
       {dialogo === 'mover' && (
         <DialogoMover
@@ -292,5 +308,90 @@ function DialogoRenomear({ ids, aoFechar, aoTerminar, aoAvisar }: {
         </ul>
       )}
     </Moldura>
+  );
+}
+
+/**
+ * Apagar de verdade. Fica separado dos outros dialogos porque e a unica acao do
+ * app que o `desfazer` nao alcanca: mover e reversivel porque o arquivo continua
+ * existindo, apagar nao deixa nada pra onde voltar.
+ *
+ * Por isso a lixeira e o padrao, e o permanente so acontece com a caixa marcada
+ * E a palavra digitada. Nao e burocracia: e o unico passo da interface inteira
+ * que destroi trabalho de gravacao.
+ */
+export function DialogoApagar({ ids, nomes, aoFechar, aoTerminar, aoAvisar }: {
+  ids: number[];
+  nomes: string[];
+  aoFechar: () => void;
+  aoTerminar: (msg: string, apagados: number[]) => void;
+  aoAvisar: (msg: string) => void;
+}) {
+  const [permanente, setPermanente] = useState(false);
+  const [confirmacao, setConfirmacao] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  const liberado = !permanente || confirmacao.trim().toUpperCase() === 'APAGAR';
+
+  const apagar = async () => {
+    if (!liberado) return;
+    setOcupado(true);
+    try {
+      const r = await api.apagarArquivos(ids, permanente);
+      const destino = r.permanente ? 'apagado(s) para sempre' : 'na lixeira';
+      aoTerminar(
+        `${r.apagados.length} ${destino}`
+        + (r.erros.length ? ` — ${r.erros.length} não deu` : ''),
+        r.apagados.map((a) => a.id),
+      );
+      if (r.erros.length) aoAvisar(r.erros.map((e) => `${e.nome}: ${e.erro}`).join(' · '));
+    } catch (e) { aoAvisar(String((e as Error).message)); }
+    finally { setOcupado(false); }
+  };
+
+  return (
+    <div className="modal-fundo" onClick={aoFechar}>
+      <div className="modal estreito" onClick={(e) => e.stopPropagation()}>
+        <h3>Apagar {ids.length} arquivo{ids.length > 1 ? 's' : ''}?</h3>
+
+        <ul className="apagar-lista">
+          {nomes.slice(0, 8).map((n) => <li key={n}>{n}</li>)}
+          {nomes.length > 8 && <li className="apagar-mais">e mais {nomes.length - 8}</li>}
+        </ul>
+
+        <label className={`apagar-opcao ${permanente ? 'perigosa' : ''}`}>
+          <input
+            type="checkbox"
+            checked={permanente}
+            onChange={(e) => { setPermanente(e.target.checked); setConfirmacao(''); }}
+          />
+          <span>
+            <strong>Apagar permanentemente</strong>
+            <small>
+              {permanente
+                ? 'Não passa pela lixeira. Não dá para voltar atrás por nenhum caminho.'
+                : 'Sem isto, vai para a lixeira do Windows e dá para restaurar.'}
+            </small>
+          </span>
+        </label>
+
+        {permanente && (
+          <input
+            className="apagar-confirmacao"
+            placeholder="digite APAGAR para liberar"
+            value={confirmacao}
+            onChange={(e) => setConfirmacao(e.target.value)}
+            autoFocus
+          />
+        )}
+
+        <div className="modal-acoes">
+          <button onClick={aoFechar}>Cancelar</button>
+          <button className="perigo" disabled={!liberado || ocupado} onClick={apagar}>
+            {ocupado ? 'apagando…' : permanente ? 'Apagar para sempre' : 'Mandar para a lixeira'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

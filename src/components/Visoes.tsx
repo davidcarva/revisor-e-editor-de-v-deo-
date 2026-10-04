@@ -137,6 +137,7 @@ function Linha({ midia, selecionado, onClick, aoMarcar, aoSelecionar }: {
   return (
     <tr
       ref={ref as React.Ref<HTMLTableRowElement>}
+      data-id={midia.id}
       className={`${selecionado ? 'sel' : ''} ${midia.revisado ? 'revisto' : ''}`}
       onClick={onClick}
       title={midia.caminho}
@@ -197,6 +198,7 @@ function Icone({ midia, selecionado, onClick }: {
   return (
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
+      data-id={midia.id}
       className={`icone ${selecionado ? 'sel' : ''}`}
       onClick={onClick}
       title={midia.caminho}
@@ -236,6 +238,7 @@ function Ladrilho({ midia, selecionado, onClick }: {
   return (
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
+      data-id={midia.id}
       className={`ladrilho ${selecionado ? 'sel' : ''}`}
       onClick={onClick}
       title={midia.caminho}

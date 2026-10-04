@@ -4,10 +4,12 @@
 // aparece na tela — nunca antes. Numa pasta com centenas de gravações, gerar
 // tudo de uma vez seriam minutos de ffmpeg pra mostrar quatro fileiras.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/api';
+import { api, ouvirProgresso, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/api';
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
-import { BarraSelecao } from './Organizar';
+import { AnimatePresence, motion } from 'motion/react';
+import { BarraSelecao, DialogoApagar } from './Organizar';
+import { useLaco } from '../lib/laco';
 import { DialogoPreparar, FaixaFila } from './Preparo';
 import { PainelEspaco } from './Espaco';
 import { Detalhes, Icones, LadoALado, VISOES, type Visual } from './Visoes';
@@ -69,6 +71,9 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
   const [preparando, setPreparando] = useState<string[] | null>(null);
   const [verEspaco, setVerEspaco] = useState(false);
+  const [apagando, setApagando] = useState<number[] | null>(null);
+  // Quantas mudanças o vigia viu desde a última releitura — só pra avisar.
+  const [doDisco, setDoDisco] = useState(0);
   const [agrupar, setAgrupar] = useState('nenhum');
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
@@ -122,6 +127,37 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     const id = window.setTimeout(carregar, busca ? 250 : 0);
     return () => clearTimeout(id);
   }, [carregar, busca]);
+
+  // O vigia do servidor avisa quando um arquivo nasce ou some nas pastas
+  // acompanhadas. Recarregar na hora é o ponto: a grade acompanha o Explorador
+  // sem ninguém mandar atualizar.
+  useEffect(() => ouvirProgresso((ev) => {
+    if (ev.tipo !== 'biblioteca') return;
+    setDoDisco((n) => n + (ev.novos ?? 0) + (ev.sumiram ?? 0));
+    carregar();
+  }), [carregar]);
+
+  // O aviso de "mudou no disco" é um pisca, não um estado: some sozinho.
+  useEffect(() => {
+    if (!doDisco) return;
+    const id = window.setTimeout(() => setDoDisco(0), 4000);
+    return () => clearTimeout(id);
+  }, [doDisco]);
+
+  // Laço: arrastar no vazio desenha a caixa e seleciona o que ela cobrir.
+  const trocarSelecao = useCallback((ids: number[], somar: boolean) => {
+    setSelecao((atual) => {
+      if (!somar) return new Set(ids);
+      const nova = new Set(atual);
+      for (const id of ids) nova.add(id);
+      return nova;
+    });
+  }, []);
+  const { area, caixa } = useLaco({
+    seletor: '[data-id]',
+    aoSelecionar: trocarSelecao,
+    aoLimpar: () => setSelecao(new Set()),
+  });
 
   const adicionarPasta = async () => {
     const escolhido = await window.revisor?.escolherPasta?.();
@@ -221,7 +257,33 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const semNada = raizes.length === 0;
 
   return (
-    <div className={`inicio ${carregando ? 'carregando' : ''}`}>
+    <div className={`inicio ${carregando ? 'carregando' : ''}`} ref={area}>
+      <AnimatePresence>
+        {caixa && caixa.w > 2 && caixa.h > 2 && (
+          <motion.div
+            className="laco"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            style={{ left: caixa.x, top: caixa.y, width: caixa.w, height: caixa.h }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {doDisco > 0 && (
+          <motion.div
+            className="aviso-disco"
+            initial={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
+            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+          >
+            <span className="disco-ponto" />
+            {doDisco} mudança{doDisco > 1 ? 's' : ''} no disco
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="inicio-topo">
         <h1>Início</h1>
         <input
@@ -362,7 +424,26 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
           aoPreparar={() => setPreparando(
             itens.filter((m) => selecao.has(m.id)).map((m) => m.caminho),
           )}
+          aoApagar={() => setApagando([...selecao])}
           aoTerminar={async (msg) => { aoAvisar(msg); setSelecao(new Set()); await carregar(); }}
+        />
+      )}
+
+      {apagando && (
+        <DialogoApagar
+          ids={apagando}
+          nomes={itens.filter((m) => apagando.includes(m.id)).map((m) => m.nome)}
+          aoAvisar={aoAvisar}
+          aoFechar={() => setApagando(null)}
+          aoTerminar={async (msg, foram) => {
+            aoAvisar(msg);
+            setApagando(null);
+            // Tira da tela ANTES de recarregar: é isso que dá a animação de
+            // saída. Esperar a resposta do servidor faria o cartão sumir seco.
+            setItens((l) => l.filter((m) => !foram.includes(m.id)));
+            setSelecao(new Set());
+            await carregar();
+          }}
         />
       )}
 
@@ -480,9 +561,11 @@ function Grade(p: PropsGrade) {
   if (p.visual === 'ladoALado') return <LadoALado {...p} />;
   return (
     <div className="grade">
-      {p.itens.map((m) => (
+      <AnimatePresence mode="popLayout" initial={false}>
+      {p.itens.map((m, i) => (
         <Cartao
           key={m.id}
+          indice={i}
           midia={m}
           aoAbrir={p.aoAbrir}
           selecionado={p.selecao.has(m.id)}
@@ -491,6 +574,7 @@ function Grade(p: PropsGrade) {
           aoMarcar={p.aoMarcar}
         />
       ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -504,7 +588,9 @@ type PropsCartao = {
   aoMarcar: (id: number, campo: 'favorito' | 'revisado', valor: boolean) => void;
 };
 
-function Cartao({ midia, aoAbrir, selecionado, modoSelecao, aoSelecionar, aoMarcar }: PropsCartao) {
+function Cartao({
+  midia, aoAbrir, selecionado, modoSelecao, aoSelecionar, aoMarcar, indice = 0,
+}: PropsCartao & { indice?: number }) {
   const [visivel, setVisivel] = useState(false);
   const [falhou, setFalhou] = useState(false);
   const [info, setInfo] = useState<Midia>(midia);
@@ -533,9 +619,25 @@ function Cartao({ midia, aoAbrir, selecionado, modoSelecao, aoSelecionar, aoMarc
   const dur = info.duracao ? duracaoCurta(info.duracao) : null;
 
   return (
-    <div
+    <motion.div
       className={`cartao ${selecionado ? 'sel' : ''} ${midia.revisado ? 'revisto' : ''}`}
       title={`${midia.caminho}\n${tamanhoCurto(midia.tamanho)}`}
+      data-id={midia.id}
+      layout="position"
+      initial={{ opacity: 0, y: 14, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      // Sair encolhendo é o que faz apagar PARECER apagar, em vez de a lista
+      // simplesmente ter um buraco a menos no quadro seguinte.
+      exit={{ opacity: 0, scale: 0.9, filter: 'blur(6px)', transition: { duration: 0.22 } }}
+      transition={{
+        type: 'spring',
+        stiffness: 380,
+        damping: 34,
+        // A escada só vale pras primeiras fileiras: com 300 cartões, atrasar o
+        // último em 6 segundos seria uma tela em branco, não uma animação.
+        delay: Math.min(indice, 23) * 0.022,
+      }}
+      whileHover={{ y: -3, transition: { type: 'spring', stiffness: 500, damping: 26 } }}
     >
       <button
         ref={ref}
@@ -585,6 +687,6 @@ function Cartao({ midia, aoAbrir, selecionado, modoSelecao, aoSelecionar, aoMarc
         title={midia.favorito ? 'Tirar dos favoritos' : 'Favoritar'}
         onClick={(e) => { e.stopPropagation(); aoMarcar(midia.id, 'favorito', !midia.favorito); }}
       >{midia.favorito ? '★' : '☆'}</button>
-    </div>
+    </motion.div>
   );
 }

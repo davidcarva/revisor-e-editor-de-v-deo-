@@ -17,6 +17,7 @@ import { proximoInicio } from './segmentos.mjs';
 import * as transcricao from './transcricao.mjs';
 import * as biblioteca from './biblioteca.mjs';
 import * as fila from './fila.mjs';
+import * as vigia from './vigia.mjs';
 import * as cache from './cache.mjs';
 import { buildFcp7Xml, buildMarkerCsv } from './premiere-xml.mjs';
 
@@ -176,15 +177,18 @@ app.get('/api/events', (req, res) => {
   // interface saber qual dos dois chegou.
   const enviaTransc = (ev) => envia({ ...ev, tipo: 'transcricao' });
   const enviaFila = (ev) => envia({ ...ev, tipo: 'fila' });
+  const enviaBiblioteca = (ev) => envia(ev);
   ingest.events.on('progress', envia);
   transcricao.events.on('transcricao', enviaTransc);
   fila.events.on('fila', enviaFila);
+  vigia.events.on('biblioteca', enviaBiblioteca);
   const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
   req.on('close', () => {
     clearInterval(ping);
     ingest.events.off('progress', envia);
     transcricao.events.off('transcricao', enviaTransc);
     fila.events.off('fila', enviaFila);
+    vigia.events.off('biblioteca', enviaBiblioteca);
   });
 });
 
@@ -384,6 +388,7 @@ app.post('/api/biblioteca/pastas', rota(async (req, res) => {
   }
   db.adicionarPasta(abs);
   const achados = await biblioteca.varrer(abs);
+  vigia.ligar();
   res.json({ ok: true, pasta: abs, achados });
 }));
 
@@ -391,6 +396,7 @@ app.delete('/api/biblioteca/pastas', rota((req, res) => {
   const alvo = String(req.query.caminho || '');
   if (!alvo) return res.status(400).json({ erro: 'informe a pasta' });
   db.removerPasta(path.resolve(alvo));
+  vigia.ligar();
   res.json({ ok: true });
 }));
 
@@ -446,6 +452,22 @@ app.post('/api/biblioteca/nova-pasta', rota(async (req, res) => {
   if (!pai || !nome.trim()) return res.status(400).json({ erro: 'informe pai e nome' });
   res.json({ ok: true, pasta: await biblioteca.criarPasta(pai, nome) });
 }));
+
+/**
+ * Apaga arquivos de verdade. Pela lixeira por padrao; `permanente=1` nao volta.
+ *
+ * Fica fora do fluxo de plano/desfazer de proposito: mover e reversivel porque
+ * o arquivo continua existindo em algum lugar, apagar nao deixa nada pra onde
+ * voltar. Quem confirma e a interface, com o nome dos arquivos na tela.
+ */
+app.delete('/api/biblioteca/arquivos', rota(async (req, res) => {
+  const ids = String(req.query.ids || '').split(',').map(Number).filter(Boolean);
+  if (!ids.length) return res.status(400).json({ erro: 'informe os ids' });
+  res.json(await biblioteca.apagar(ids, { permanente: req.query.permanente === '1' }));
+}));
+
+/** Estado do vigia: quais pastas estao sendo acompanhadas em tempo real. */
+app.get('/api/vigia', rota((req, res) => res.json({ pastas: vigia.vigiando() })));
 
 app.patch('/api/biblioteca/:id/marca', rota((req, res) => {
   const campo = String(req.body?.campo || '');
@@ -676,6 +698,8 @@ if (fs.existsSync(path.join(DIST, 'index.html'))) {
 }
 
 const servidor = app.listen(PORT, '127.0.0.1', () => {
+  const quantas = vigia.ligar();
+  if (quantas) console.log(`         vigia    ${quantas} pasta(s) em tempo real`);
   console.log(`revisor: servidor em http://127.0.0.1:${PORT}`);
   console.log(`         projeto  ${db.dbPath()}`);
   console.log(`         cache    ${ingest.cacheRoot()}`);

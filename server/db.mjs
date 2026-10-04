@@ -429,6 +429,20 @@ export const marcarDesfeita = (id) =>
 export const marcarVisto = (caminho) =>
   handle().prepare("UPDATE biblioteca SET visto_em=datetime('now') WHERE caminho=?").run(caminho);
 
+/**
+ * Tira o arquivo do catálogo porque ele não existe mais em disco.
+ *
+ * Diferente de `marcarAusentes`: aquilo é "sumiu da última varredura, talvez o
+ * HD externo esteja desconectado". Isto é "eu apaguei" — a linha vai embora.
+ */
+export function removerMidiaPorCaminho(caminho) {
+  const d = handle();
+  d.prepare('DELETE FROM biblioteca WHERE caminho=?').run(caminho);
+  // A fonte (se existir) some junto: o cache dela vira órfão e aparece no
+  // painel de espaço pra ser recuperado.
+  d.prepare('DELETE FROM sources WHERE path=?').run(caminho);
+}
+
 export const marcarAusentes = (pasta) =>
   handle().prepare('UPDATE biblioteca SET ausente=1 WHERE pasta LIKE ?').run(`${pasta}%`);
 
