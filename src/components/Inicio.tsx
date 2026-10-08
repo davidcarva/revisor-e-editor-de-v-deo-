@@ -10,6 +10,7 @@ import { noElectron } from '../lib/sessao';
 import { AnimatePresence, motion } from 'motion/react';
 import { BarraSelecao, DialogoApagar } from './Organizar';
 import { useLaco } from '../lib/laco';
+import { lembrar, navegacao } from '../lib/navegacao';
 import { DialogoPreparar, FaixaFila } from './Preparo';
 import { PainelEspaco } from './Espaco';
 import { Vitrine } from './Vitrine';
@@ -58,17 +59,17 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [diretos, setDiretos] = useState(0);
   const [raizes, setRaizes] = useState<Pasta[]>([]);
   const [contagem, setContagem] = useState({ total: 0, vistos: 0, semPoster: 0 });
-  const [busca, setBusca] = useState('');
-  const [pasta, setPasta] = useState('');
-  const [recursivo, setRecursivo] = useState(false);
-  const [ordem, setOrdem] = useState('modificado');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+  const [busca, setBusca] = useState(navegacao().busca);
+  const [pasta, setPasta] = useState(navegacao().pasta);
+  const [recursivo, setRecursivo] = useState(navegacao().recursivo);
+  const [ordem, setOrdem] = useState(navegacao().ordem);
+  const [dir, setDir] = useState<'asc' | 'desc'>(navegacao().dir);
   const [visual, setVisual] = useState<Visual>(() => {
     try { return (localStorage.getItem('revisor:visual') as Visual) || 'grade'; }
     catch { return 'grade'; }
   });
   const [ocupado, setOcupado] = useState(false);
-  const [filtro, setFiltro] = useState('');
+  const [filtro, setFiltro] = useState(navegacao().filtro);
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
   const [preparando, setPreparando] = useState<string[] | null>(null);
   const [verEspaco, setVerEspaco] = useState(false);
@@ -76,7 +77,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   // Quantas mudanças o vigia viu desde a última releitura — só pra avisar.
   const [doDisco, setDoDisco] = useState(0);
   const [marcas, setMarcas] = useState(0);
-  const [agrupar, setAgrupar] = useState('nenhum');
+  const [agrupar, setAgrupar] = useState(navegacao().agrupar);
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
   const ultimoClique = useRef<number | null>(null);
   // O que a lista na tela REALMENTE representa, preenchido quando a resposta
@@ -93,10 +94,16 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     const meu = ++pedido.current;
     setCarregando(true);
     try {
+      // Sem pasta e sem busca, a grade NAO lista nada.
+      //
+      // Listar o acervo inteiro — 384 arquivos, cada cartao com seu observador
+      // e seu pedido de miniatura — custava memoria e segundos pra mostrar algo
+      // que nao ajuda: ninguem procura um video rolando por 384. Quem procura,
+      // busca; quem sabe onde esta, entra na pasta. O resto e a vitrine.
+      const listando = Boolean(pasta || busca);
       const r = await api.biblioteca({
-        q: busca, pasta, ordem, dir, filtro, limite: 300,
-        // Sem pasta escolhida a grade é o acervo inteiro; aí recursivo é o único
-        // sentido possível.
+        q: busca, pasta, ordem, dir, filtro,
+        limite: listando ? 300 : 0,
         recursivo: pasta ? recursivo : true,
       });
       if (meu !== pedido.current) return;
@@ -110,7 +117,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
 
       // Tudo junto, num só passo: lista, cabeçalho e recentes nunca aparecem
       // descrevendo coisas diferentes.
-      setItens(r.itens);
+      setItens(listando ? r.itens : []);
       setSubpastas(r.subpastas ?? []);
       setDiretos(r.diretos ?? 0);
       setRaizes(r.pastas);
@@ -229,6 +236,45 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     } catch (err) { aoAvisar(String((err as Error).message)); }
   };
 
+  // Guarda onde você está, pra voltar de um vídeo cair aqui e não no começo.
+  useEffect(() => {
+    lembrar({ pasta, busca, ordem, dir, filtro, recursivo, agrupar });
+  }, [pasta, busca, ordem, dir, filtro, recursivo, agrupar]);
+
+  // A rolagem é guardada à parte: ela muda o tempo todo e não pode disparar
+  // renderização. Restaurar espera a grade existir — antes disso não há altura
+  // pra rolar até.
+  //
+  // Quem rola é `.inicio`, não a janela: o app ocupa a tela inteira e cada
+  // painel rola por dentro. `window.scrollY` aqui é sempre zero.
+  //
+  // E restaura UMA vez só, na volta. Trocar de pasta, buscar ou o vigia
+  // recarregar a lista também passam por aqui — puxar a rolagem de volta
+  // nessas horas seria o app brigando com a mão de quem está usando.
+  const jaRestaurou = useRef(false);
+  useEffect(() => {
+    const caixa = area.current;
+    if (!caixa) return;
+    const alvo = navegacao().rolagem;
+    if (!jaRestaurou.current && alvo > 0 && !carregando) {
+      jaRestaurou.current = true;
+      requestAnimationFrame(() => { caixa.scrollTop = alvo; });
+    }
+    const aoRolar = () => lembrar({ rolagem: caixa.scrollTop });
+    caixa.addEventListener('scroll', aoRolar, { passive: true });
+    return () => caixa.removeEventListener('scroll', aoRolar);
+  }, [carregando, area]);
+
+  // Trocar de pasta ou buscar é começar de novo: a rolagem guardada era de
+  // outra lista. Na PRIMEIRA execução, não — é justamente a volta de um vídeo,
+  // e zerar aqui apagaria o valor antes do efeito de cima conseguir usá-lo.
+  const primeiraNavegacao = useRef(true);
+  useEffect(() => {
+    if (primeiraNavegacao.current) { primeiraNavegacao.current = false; return; }
+    jaRestaurou.current = true;
+    lembrar({ rolagem: 0 });
+  }, [pasta, busca]);
+
   // Esc limpa a seleção: é a saída óbvia quando se entra nela sem querer.
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelecao(new Set()); };
@@ -322,8 +368,8 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       {!semNada && (
         <div className="inicio-barra">
           <nav className="trilha">
-            <button className={pasta ? '' : 'on'} onClick={() => setPasta('')}>
-              Tudo <small>({contagem.total})</small>
+            <button className={pasta ? '' : 'on'} onClick={() => { setPasta(''); setBusca(''); }}>
+              Início <small>({contagem.total} no acervo)</small>
             </button>
             {!pasta && raizes.map((r) => (
               <span key={r.caminho} className="trilha-raiz">
@@ -476,20 +522,6 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
         />
       )}
 
-      {recentes.length > 0 && (
-        <section>
-          <h2>Mídia recente</h2>
-          <Grade
-            itens={recentes}
-            aoAbrir={aoAbrir}
-            selecao={selecao}
-            aoSelecionar={selecionar}
-            aoMarcar={marcarUm}
-            visual={visual === 'detalhes' ? 'grade' : visual}
-          />
-        </section>
-      )}
-
       {subpastas.length > 0 && !busca && (
         <section>
           <h2>Pastas <small>{subpastas.length}</small></h2>
@@ -502,6 +534,20 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {recentes.length > 0 && (
+        <section>
+          <h2>Mídia recente</h2>
+          <Grade
+            itens={recentes}
+            aoAbrir={aoAbrir}
+            selecao={selecao}
+            aoSelecionar={selecionar}
+            aoMarcar={marcarUm}
+            visual={visual === 'detalhes' ? 'grade' : visual}
+          />
         </section>
       )}
 

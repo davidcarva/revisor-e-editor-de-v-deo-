@@ -522,6 +522,24 @@ export function listarMidia({
  * Sai do proprio catalogo, sem tocar o disco: a tabela ja sabe a pasta de cada
  * arquivo, entao e so agrupar pelo primeiro trecho do caminho relativo.
  */
+/**
+ * As pastas registradas, com quantos arquivos cada uma tem.
+ *
+ * É o que a página inicial mostra pra se entrar em algum lugar. Antes a porta
+ * de entrada era o botão "Tudo", que listava o acervo inteiro; sem ele, as
+ * raízes precisam ser clicáveis.
+ */
+export function raizesComContagem() {
+  const d = handle();
+  return listarPastas().map((p) => ({
+    caminho: p.caminho,
+    nome: p.caminho.split(/[\\/]/).filter(Boolean).pop() || p.caminho,
+    arquivos: d.prepare('SELECT COUNT(*) n FROM biblioteca WHERE ausente=0 AND pasta LIKE ?')
+      .get(`${p.caminho}%`).n,
+    raiz: true,
+  })).filter((p) => p.arquivos > 0);
+}
+
 export function subpastasDe(base, sep = '\\') {
   const linhas = handle().prepare(
     `SELECT pasta, COUNT(*) AS n FROM biblioteca

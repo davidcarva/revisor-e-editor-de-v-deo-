@@ -15,6 +15,79 @@ import { baseDoArquivo } from './lib/tempo';
 
 type Selecao = { de: number; ate: number } | null;
 
+/**
+ * O nome do arquivo, editavel ali mesmo.
+ *
+ * Batizar a gravacao e a hora em que voce DESCOBRE o que ela e — assistindo.
+ * Ter que guardar isso na cabeca, voltar pra biblioteca e procurar o arquivo de
+ * novo e o jeito de nunca renomear nada.
+ *
+ * Renomear com o video rodando nao interrompe nada: o Windows permite renomear
+ * um arquivo com leitura aberta, e o stream que o servidor ja tem continua lendo
+ * ate o fim.
+ */
+function TituloEditavel({ fonte, aoRenomear, aoAvisar }: {
+  fonte: Fonte;
+  aoRenomear: (f: Fonte) => void;
+  aoAvisar: (msg: string) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const semExtensao = fonte.name.replace(/\.[^.]+$/, '');
+
+  const abrir = () => { setTexto(semExtensao); setEditando(true); };
+
+  const salvar = async () => {
+    const novo = texto.trim();
+    if (!novo || novo === semExtensao) { setEditando(false); return; }
+    setSalvando(true);
+    try {
+      const f = await api.renomearFonte(fonte.id, novo);
+      aoRenomear(f);
+      aoAvisar(f.renomeado.nome === novo
+        ? `renomeado para ${f.renomeado.nome}`
+        : `já existia um com esse nome — ficou ${f.renomeado.nome}`);
+      setEditando(false);
+    } catch (e) { aoAvisar(String((e as Error).message)); }
+    finally { setSalvando(false); }
+  };
+
+  if (!editando) {
+    return (
+      <button
+        className="cinema-titulo editavel"
+        title={`${fonte.path}
+
+Clique para renomear`}
+        onClick={abrir}
+      >
+        {fonte.name}
+        <span className="titulo-lapis">✎</span>
+      </button>
+    );
+  }
+
+  return (
+    <input
+      className="cinema-titulo campo"
+      value={texto}
+      autoFocus
+      disabled={salvando}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={salvar}
+      onKeyDown={(e) => {
+        // O teclado do player inteiro escuta a janela: espaco pausaria, T
+        // trocaria de modo. Enquanto se digita um nome, nada disso pode valer.
+        e.stopPropagation();
+        if (e.key === 'Enter') salvar();
+        if (e.key === 'Escape') setEditando(false);
+      }}
+    />
+  );
+}
+
 export default function App() {
   const [atualId, setAtualId] = useState<number | null>(null);
   const [fonte, setFonte] = useState<Fonte | null>(null);
@@ -364,7 +437,11 @@ export default function App() {
               <span className="cinema-btn-icone">▤</span>
               Painéis
             </button>
-            <span className="cinema-titulo" title={fonte.path}>{fonte.name}</span>
+            <TituloEditavel
+              fonte={fonte}
+              aoAvisar={avisar}
+              aoRenomear={(f) => setFonte(f)}
+            />
             {estadoTranscricao?.emCurso && (
               <span className="cinema-selo" title="transcrevendo em segundo plano">
                 <i />transcrevendo {Math.round(estadoTranscricao.pct * 100)}%

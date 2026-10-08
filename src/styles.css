@@ -340,7 +340,9 @@ input:focus, textarea:focus, select:focus {
 .vazio { color: var(--apagado); font-size: 12px; padding: 12px; margin: 0; }
 
 /* --------------------------------------------------------------- inicio */
-.inicio { flex: 1 1 auto; overflow: auto; padding: 30px 34px 70px; }
+/* `relative` por causa do laço: a caixa dele é `absolute` e precisa se
+   ancorar NESTE conteúdo, que é o que rola, e não na página. */
+.inicio { position: relative; flex: 1 1 auto; overflow: auto; padding: 30px 34px 70px; }
 .inicio-topo { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
 .inicio-topo h1 {
   margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -.02em;
@@ -1158,7 +1160,9 @@ input:focus, textarea:focus, select:focus {
    corpo da página), não da janela: assim ela continua ancorada no mesmo lugar
    quando a lista rola durante o arrasto. */
 .laco {
-  position: absolute;
+  /* Fixa na janela: ela segue o cursor, nao o conteudo. Ver o comentario em
+     `caixaDe`, no laco.ts. */
+  position: fixed;
   z-index: 30;
   pointer-events: none;
   border: 1px solid var(--realce);
@@ -1472,3 +1476,36 @@ body.lacando .cartao, body.lacando .icone, body.lacando .ladrilho { cursor: cros
   font-size: 13px;
   line-height: 1.6;
 }
+
+/* ------------------------------------------- título editável do cinema */
+.cinema-titulo.editavel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--pilula);
+  padding: 5px 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+  transition: background var(--rapido) var(--curva), border-color var(--rapido) var(--curva);
+}
+.cinema-titulo.editavel:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--borda-forte);
+}
+.titulo-lapis { opacity: 0; font-size: 11px; transition: opacity var(--rapido) var(--curva); }
+.cinema-titulo.editavel:hover .titulo-lapis { opacity: 0.65; }
+
+.cinema-titulo.campo {
+  min-width: 280px;
+  padding: 5px 12px;
+  border: 1px solid var(--destaque);
+  border-radius: var(--pilula);
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--texto);
+  font: inherit;
+}
+.cinema-titulo.campo:focus { outline: none; }
+.cinema-titulo.campo:disabled { opacity: 0.5; }

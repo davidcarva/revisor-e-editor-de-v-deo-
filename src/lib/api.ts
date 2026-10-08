@@ -193,6 +193,11 @@ export const api = {
     pedir<{ gerando?: boolean; jaExistia?: boolean }>(
       `/api/sources/${id}/qualidades`, json('POST', { nivel })),
 
+  /** Renomeia o arquivo da fonte aberta, no disco. Devolve a fonte atualizada. */
+  renomearFonte: (id: number, nome: string) =>
+    pedir<Fonte & { renomeado: { caminho: string; nome: string; semMudanca: boolean } }>(
+      `/api/sources/${id}/nome`, json('PATCH', { nome })),
+
   fontes: () => pedir<Fonte[]>('/api/sources'),
   fonte: (id: number) => pedir<Fonte>(`/api/sources/${id}`),
   abrir: (caminho: string) => pedir<Fonte>('/api/sources', json('POST', { path: caminho })),
@@ -330,6 +335,8 @@ export const api = {
 };
 
 export const urlPoster = (id: number) => `/api/biblioteca/${id}/poster`;
+/** Capa grande — so os destaques tem; cai na miniatura quando nao existe. */
+export const urlCapa = (id: number) => `/api/biblioteca/${id}/capa`;
 
 export type Qualidade = 'original' | 'metade' | 'quarto';
 export type NivelQualidade = {

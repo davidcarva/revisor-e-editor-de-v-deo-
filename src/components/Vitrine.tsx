@@ -10,7 +10,7 @@
 // começo. Fica mudo e em laço — é uma amostra do material, não uma sessão.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { api, urlDireto, urlPoster, type Midia } from '../lib/api';
+import { api, urlCapa, urlDireto, urlPoster, type Midia } from '../lib/api';
 import { sessao } from '../lib/sessao';
 import { duracaoCurta } from '../lib/tempo';
 
@@ -184,7 +184,7 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
           <motion.img
             key={atual.id}
             className="painel-capa"
-            src={urlPoster(atual.id)}
+            src={urlCapa(atual.id)}
             alt=""
             initial={{ opacity: 0, scale: 1.04 }}
             animate={{ opacity: tocando && !falhou ? 0 : 1, scale: 1 }}

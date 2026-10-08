@@ -148,6 +148,18 @@ app.post('/api/sources/:id/reingest', rota((req, res) => {
   res.json({ ok: true });
 }));
 
+/**
+ * Renomeia o arquivo da fonte aberta. E o que deixa batizar a gravacao no
+ * cinema, assistindo, em vez de ter que achar ela de novo na biblioteca depois.
+ */
+app.patch('/api/sources/:id/nome', rota(async (req, res) => {
+  const src = exigirFonte(req);
+  const nome = String(req.body?.nome || '').trim();
+  if (!nome) return res.status(400).json({ erro: 'informe o nome' });
+  const r = await biblioteca.renomear(src.path, nome);
+  res.json({ ...db.getSource(src.id), tracks: db.listTracks(src.id), renomeado: r });
+}));
+
 app.post('/api/sources/:id/cancel', rota((req, res) => {
   ingest.cancel(exigirFonte(req).id);
   res.json({ ok: true });
@@ -372,11 +384,18 @@ app.get('/api/biblioteca', rota((req, res) => {
       ordem: String(req.query.ordem || 'modificado'),
       dir: String(req.query.dir || 'desc'),
       filtro: String(req.query.filtro || ''),
-      limite: Math.min(400, Number(req.query.limite) || 120),
+      // `limite=0` e um pedido legitimo: a pagina inicial quer as pastas, a
+      // contagem e os formatos SEM a lista. `|| 120` engoliria o zero.
+      limite: Math.min(400, Number.isFinite(Number(req.query.limite))
+        ? Number(req.query.limite) : 120),
       offset: Number(req.query.offset) || 0,
     }),
     // Só faz sentido listar subpastas quando se está dentro de uma pasta.
-    ...(pasta ? db.subpastasDe(pasta, path.sep) : { subpastas: [], diretos: 0 }),
+    // Dentro de uma pasta, as filhas dela. Na raiz, as pastas registradas —
+    // sem isso a página inicial não teria por onde entrar em lugar nenhum.
+    ...(pasta
+      ? db.subpastasDe(pasta, path.sep)
+      : { subpastas: q ? [] : db.raizesComContagem(), diretos: 0 }),
     contagem: db.contarMidia(),
     formatos: db.formatosExistentes(),
     pastas: db.listarPastas(),
@@ -485,6 +504,20 @@ app.get('/api/biblioteca/:id/info', rota(async (req, res) => {
   const m = await biblioteca.sondar(Number(req.params.id));
   if (!m) return res.status(404).json({ erro: 'não encontrado' });
   res.json(m);
+}));
+
+/** Capa grande, so pros destaques da vitrine. Cai na miniatura se nao der. */
+app.get('/api/biblioteca/:id/capa', rota(async (req, res) => {
+  let arquivo = null;
+  try { arquivo = await biblioteca.capa(Number(req.params.id)); }
+  catch { arquivo = null; }
+  if (!arquivo) {
+    try { arquivo = await biblioteca.poster(Number(req.params.id)); }
+    catch { arquivo = null; }
+  }
+  if (!arquivo) return res.status(404).json({ erro: 'sem capa' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  servirArquivo(res, arquivo, 'image/jpeg');
 }));
 
 /** Miniatura; gera na primeira vez que alguém pede. */
