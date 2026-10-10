@@ -93,6 +93,8 @@ export type Midia = {
   favorito: number;
   revisado: number;
   destaque?: number;
+  /** Triagem: null = ainda nao julgado. */
+  veredito?: Veredito | null;
 };
 
 export type Pasta = { caminho: string; adicionada: string };
@@ -106,6 +108,8 @@ export type PassoPlano = {
   nome: string;
   novoNome?: string;
 };
+
+export type Veredito = 'usar' | 'talvez' | 'descartar';
 
 export type ItemArquivo = { nome: string; dir: boolean; caminho: string; size: number };
 
@@ -248,6 +252,7 @@ export const api = {
       subpastas: Subpasta[];
       diretos: number;
       contagem: { total: number; vistos: number; semPoster: number };
+      vereditos: Record<string, number>;
       formatos: { ext: string; tipo: string; n: number }[];
       pastas: Pasta[];
     }>(
@@ -288,6 +293,13 @@ export const api = {
 
   marcar: (id: number, campo: 'favorito' | 'revisado' | 'destaque', valor: boolean) =>
     pedir<Midia>(`/api/biblioteca/${id}/marca`, json('PATCH', { campo, valor })),
+  /** O veredito da triagem. `null` desfaz. */
+  julgar: (id: number, valor: Veredito | null) =>
+    pedir<Midia>(`/api/biblioteca/${id}/veredito`, json('PATCH', { valor })),
+  /** O mesmo, mas pela fonte aberta — o player so sabe o caminho. */
+  julgarFonte: (id: number, valor: Veredito | null) =>
+    pedir<Midia>(`/api/sources/${id}/veredito`, json('PATCH', { valor })),
+
   /** A vitrine: os videos escolhidos a dedo pro topo da pagina. */
   destaques: (limite = 8) =>
     pedir<{ itens: Midia[] }>(`/api/biblioteca/destaques?limite=${limite}`),
@@ -318,6 +330,9 @@ export const api = {
     pedir(`/api/biblioteca/pastas?caminho=${encodeURIComponent(caminho)}`, { method: 'DELETE' }),
   revarrer: () => pedir<{ total: number }>('/api/biblioteca/varrer', json('POST')),
   infoMidia: (id: number) => pedir<Midia>(`/api/biblioteca/${id}/info`),
+  /** A linha da biblioteca a partir do caminho — o player so tem isso. */
+  infoMidiaPorCaminho: (caminho: string) =>
+    pedir<Midia>(`/api/biblioteca/por-caminho?p=${encodeURIComponent(caminho)}`),
 
   listarPasta: (dir?: string) =>
     pedir<{ dir: string; pai: string | null; itens: ItemArquivo[] }>(

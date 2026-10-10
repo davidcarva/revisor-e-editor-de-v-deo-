@@ -1509,3 +1509,79 @@ body.lacando .cartao, body.lacando .icone, body.lacando .ladrilho { cursor: cros
 }
 .cinema-titulo.campo:focus { outline: none; }
 .cinema-titulo.campo:disabled { opacity: 0.5; }
+
+/* ------------------------------------------------------------ triagem */
+
+.triagem { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+
+.triagem-fila {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--pilula);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+.triagem-seta {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: transparent; color: var(--texto);
+  font-size: 16px; line-height: 1;
+  transition: background var(--rapido) var(--curva);
+}
+.triagem-seta:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.triagem-seta:disabled { opacity: 0.25; }
+.triagem-conta {
+  padding: 0 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.triagem-conta small { color: var(--apagado); }
+
+.triagem-vereditos { display: flex; gap: 4px; }
+.triagem-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--pilula);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  color: var(--fraco);
+  font-size: 12px;
+  transition: color var(--rapido) var(--curva), background var(--rapido) var(--curva),
+              border-color var(--rapido) var(--curva);
+}
+.triagem-btn kbd {
+  display: grid; place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit; font-size: 10px;
+}
+.triagem-btn:hover { color: var(--texto); background: rgba(0, 0, 0, 0.65); }
+.triagem-btn.on { color: var(--destaque-texto); background: var(--destaque); border-color: var(--destaque); }
+.triagem-btn.on kbd { background: rgba(0, 0, 0, 0.18); }
+.triagem-btn.descartar.on { background: var(--vermelho); border-color: var(--vermelho); color: #1a0d0d; }
+.triagem-btn.talvez.on { background: var(--ambar); border-color: var(--ambar); color: #1a1505; }
+
+/* --- marca nos cartões da biblioteca --- */
+.cartao-veredito {
+  position: absolute; left: 6px; bottom: 6px;
+  padding: 2px 8px;
+  border-radius: var(--pilula);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: var(--destaque);
+  color: var(--destaque-texto);
+}
+.cartao-veredito.talvez { background: var(--ambar); color: #1a1505; }
+.cartao-veredito.descartar { background: var(--vermelho); color: #1a0d0d; }
+/* Descartado fica apagado na grade: o que você já recusou não deve competir
+   com o que ainda não julgou. */
+.cartao.julgado.descartar .cartao-arte { opacity: 0.4; }
+.cartao.julgado.descartar:hover .cartao-arte { opacity: 0.8; }

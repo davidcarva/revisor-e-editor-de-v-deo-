@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, urlCapa, urlDireto, urlPoster, type Midia } from '../lib/api';
 import { sessao } from '../lib/sessao';
+import { lembrar } from '../lib/navegacao';
 import { duracaoCurta } from '../lib/tempo';
 
 const horas = (s: number) => (s >= 3600
@@ -49,6 +50,15 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
   useEffect(() => { carregar(); }, [carregar, versao]);
 
   const atual = itens[i];
+
+  /**
+   * Abrir daqui põe a VITRINE como fila: começar pelos destaques e passar pelos
+   * destaques com ↓ é o mesmo gesto de começar por uma pasta e passar por ela.
+   */
+  const abrir = (caminho: string) => {
+    lembrar({ fila: itens.map((m) => m.caminho) });
+    aoAbrir(caminho);
+  };
 
   // Trocar de vídeo zera o preview: o <video> anterior pode estar no meio de
   // um Range de 2 GB, e deixá-lo correndo gastaria banda de disco à toa.
@@ -140,7 +150,7 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
         </p>
 
         <div className="vitrine-acoes">
-          <button className="pilula forte" onClick={() => aoAbrir(atual.caminho)}>
+          <button className="pilula forte" onClick={() => abrir(atual.caminho)}>
             Assistir <i className="pilula-bolha" />
           </button>
           <button className="pilula" onClick={() => aoPreparar(itens.map((m) => m.caminho))}>
@@ -155,7 +165,7 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
               key={m.id}
               className={`mini ${n === i ? 'on' : ''}`}
               onClick={() => setI(n)}
-              onDoubleClick={() => aoAbrir(m.caminho)}
+              onDoubleClick={() => abrir(m.caminho)}
               title={m.caminho}
               layout
               whileHover={{ y: -4 }}
@@ -206,7 +216,7 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
           />
         )}
 
-        <button className="painel-assistir pilula forte" onClick={() => aoAbrir(atual.caminho)}>
+        <button className="painel-assistir pilula forte" onClick={() => abrir(atual.caminho)}>
           <i className="seta-play" />
           Assistir agora
         </button>
@@ -216,7 +226,7 @@ export function Vitrine({ versao, contagem, aoAbrir, aoPreparar, aoAvisar }: Pro
             <span>Biblioteca</span>
             <button
               className="placar-ir"
-              onClick={() => aoAbrir(atual.caminho)}
+              onClick={() => abrir(atual.caminho)}
               aria-label="Abrir o destaque"
             >↗</button>
           </div>

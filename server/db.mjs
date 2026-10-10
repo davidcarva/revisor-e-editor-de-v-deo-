@@ -169,6 +169,10 @@ const MIGRACOES = [
   // Vitrine da pagina inicial: quais videos aparecem em destaque la em cima.
   ['biblioteca', 'destaque', 'INTEGER NOT NULL DEFAULT 0'],
   ['biblioteca', 'destaque_em', 'TEXT'],
+  // Triagem: o que voce decidiu sobre a gravacao depois de assistir.
+  // NULL = ainda nao julgada.
+  ['biblioteca', 'veredito', 'TEXT'],
+  ['biblioteca', 'veredito_em', 'TEXT'],
 ];
 
 function migrar(d) {
@@ -394,6 +398,28 @@ export function setSondagem(id, s) {
 export const setPoster = (id, caminho) =>
   handle().prepare('UPDATE biblioteca SET poster=? WHERE id=?').run(caminho, id);
 
+export const VEREDITOS = new Set(['usar', 'talvez', 'descartar']);
+
+/**
+ * O veredito da triagem. `null` apaga — e desfazer um julgamento tem que ser
+ * tao barato quanto dar um, senao ninguem julga com confianca.
+ */
+export function setVeredito(id, valor) {
+  if (valor !== null && !VEREDITOS.has(valor)) throw new Error('veredito invalido');
+  handle().prepare(`UPDATE biblioteca
+    SET veredito=?, veredito_em=${valor ? "datetime('now')" : 'NULL'} WHERE id=?`)
+    .run(valor, id);
+  return getMidia(id);
+}
+
+/** Quantos em cada veredito — e o que a barra da biblioteca mostra. */
+export const contarVereditos = () => {
+  const d = handle();
+  const linhas = d.prepare(`SELECT COALESCE(veredito,'semVeredito') v, COUNT(*) n
+    FROM biblioteca WHERE ausente=0 GROUP BY v`).all();
+  return Object.fromEntries(linhas.map((l) => [l.v, l.n]));
+};
+
 const SINALIZADORES = new Set(['favorito', 'revisado', 'destaque']);
 
 export function setSinalizador(id, campo, valor) {
@@ -480,6 +506,8 @@ export function listarMidia({
   const args = [];
   if (filtro === 'favoritos') cond.push('favorito = 1');
   if (filtro === 'destaques') cond.push('destaque = 1');
+  if (filtro === 'semVeredito') cond.push('veredito IS NULL');
+  if (VEREDITOS.has(filtro)) { cond.push('veredito = ?'); args.push(filtro); }
   if (filtro === 'naoRevisados') cond.push('revisado = 0');
   if (filtro === 'revisados') cond.push('revisado = 1');
   if (filtro === 'video' || filtro === 'audio') { cond.push('tipo = ?'); args.push(filtro); }

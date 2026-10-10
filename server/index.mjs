@@ -397,6 +397,7 @@ app.get('/api/biblioteca', rota((req, res) => {
       ? db.subpastasDe(pasta, path.sep)
       : { subpastas: q ? [] : db.raizesComContagem(), diretos: 0 }),
     contagem: db.contarMidia(),
+    vereditos: db.contarVereditos(),
     formatos: db.formatosExistentes(),
     pastas: db.listarPastas(),
   });
@@ -492,10 +493,40 @@ app.delete('/api/biblioteca/arquivos', rota(async (req, res) => {
 /** Estado do vigia: quais pastas estao sendo acompanhadas em tempo real. */
 app.get('/api/vigia', rota((req, res) => res.json({ pastas: vigia.vigiando() })));
 
+/**
+ * O veredito da triagem, pelo id da biblioteca. `valor: null` desfaz.
+ */
+app.patch('/api/biblioteca/:id/veredito', rota((req, res) => {
+  const v = req.body?.valor ?? null;
+  const m = db.setVeredito(Number(req.params.id), v === null ? null : String(v));
+  if (!m) return res.status(404).json({ erro: 'não encontrado' });
+  res.json(m);
+}));
+
+/**
+ * O mesmo, pela fonte aberta no player — que e quem sabe o CAMINHO, nao o id da
+ * biblioteca. Julgar acontece assistindo; ter que descobrir o id antes seria
+ * uma ida e volta a toa a cada tecla.
+ */
+app.patch('/api/sources/:id/veredito', rota((req, res) => {
+  const src = exigirFonte(req);
+  const m = db.getMidiaPorCaminho(src.path);
+  if (!m) return res.status(404).json({ erro: 'arquivo não está na biblioteca' });
+  const v = req.body?.valor ?? null;
+  res.json(db.setVeredito(m.id, v === null ? null : String(v)));
+}));
+
 app.patch('/api/biblioteca/:id/marca', rota((req, res) => {
   const campo = String(req.body?.campo || '');
   const m = db.setSinalizador(Number(req.params.id), campo, !!req.body?.valor);
   if (!m) return res.status(404).json({ erro: 'não encontrado' });
+  res.json(m);
+}));
+
+/** A linha da biblioteca a partir do caminho. Precisa vir ANTES de `/:id`. */
+app.get('/api/biblioteca/por-caminho', rota((req, res) => {
+  const m = db.getMidiaPorCaminho(path.resolve(String(req.query.p || '')));
+  if (!m) return res.status(404).json({ erro: 'não está na biblioteca' });
   res.json(m);
 }));
 

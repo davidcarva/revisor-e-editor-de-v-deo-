@@ -79,6 +79,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   const [marcas, setMarcas] = useState(0);
   const [agrupar, setAgrupar] = useState(navegacao().agrupar);
   const [formatos, setFormatos] = useState<{ ext: string; tipo: string; n: number }[]>([]);
+  const [vereditos, setVereditos] = useState<Record<string, number>>({});
   const ultimoClique = useRef<number | null>(null);
   // O que a lista na tela REALMENTE representa, preenchido quando a resposta
   // chega. O cabeçalho lê daqui, não dos filtros atuais: senão, no intervalo
@@ -123,6 +124,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       setRaizes(r.pastas);
       setContagem(r.contagem);
       setFormatos(r.formatos ?? []);
+      setVereditos(r.vereditos ?? {});
       setRecentes(novosRecentes);
       setCarregado({ pasta, busca, recursivo: pasta ? recursivo : true });
     } catch (e) {
@@ -240,6 +242,22 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
   useEffect(() => {
     lembrar({ pasta, busca, ordem, dir, filtro, recursivo, agrupar });
   }, [pasta, busca, ordem, dir, filtro, recursivo, agrupar]);
+
+  /**
+   * Abre um vídeo levando junto a fila do que estava na tela.
+   *
+   * A fila é capturada AQUI, no clique, e não num efeito que acompanha a lista.
+   * Entre fechar a biblioteca e o vídeo aparecer existe um instante em que o
+   * App não tem nem `abrindo` nem `fonte` — e nesse instante a biblioteca
+   * remonta vazia por um quadro. Um efeito contínuo gravaria essa lista vazia
+   * por cima da boa, e o player abriria sem fila nenhuma.
+   */
+  const abrirComFila = useCallback((caminho: string) => {
+    const visiveis = itens.length ? itens : recentes;
+    const fila = visiveis.filter((m) => m.tipo === 'video').map((m) => m.caminho);
+    lembrar({ fila: fila.includes(caminho) ? fila : [caminho] });
+    aoAbrir(caminho);
+  }, [itens, recentes, aoAbrir]);
 
   // A rolagem é guardada à parte: ela muda o tempo todo e não pode disparar
   // renderização. Restaurar espera a grade existir — antes disso não há altura
@@ -412,7 +430,16 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
             )}
             <select value={filtro} onChange={(e) => setFiltro(e.target.value)} title="Filtrar">
               <option value="">Todos</option>
-              <option value="favoritos">★ Favoritos</option>
+              <option value="semVeredito">
+                Ainda não julguei{vereditos.semVeredito ? ` (${vereditos.semVeredito})` : ''}
+              </option>
+              <option value="usar">Usar{vereditos.usar ? ` (${vereditos.usar})` : ''}</option>
+              <option value="talvez">Talvez{vereditos.talvez ? ` (${vereditos.talvez})` : ''}</option>
+              <option value="descartar">
+                Descartar{vereditos.descartar ? ` (${vereditos.descartar})` : ''}
+              </option>
+              <option value="destaques">★ Na vitrine</option>
+              <option value="favoritos">Favoritos</option>
               <option value="naoRevisados">Ainda não revisados</option>
               <option value="revisados">Já revisados</option>
               <option value="video">Só vídeo</option>
@@ -542,7 +569,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
           <h2>Mídia recente</h2>
           <Grade
             itens={recentes}
-            aoAbrir={aoAbrir}
+            aoAbrir={abrirComFila}
             selecao={selecao}
             aoSelecionar={selecionar}
             aoMarcar={marcarUm}
@@ -574,7 +601,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               )}
               <Grade
                 itens={g.itens}
-                aoAbrir={aoAbrir}
+                aoAbrir={abrirComFila}
                 selecao={selecao}
                 aoSelecionar={selecionar}
                 aoMarcar={marcarUm}
@@ -683,7 +710,8 @@ function Cartao({
 
   return (
     <motion.div
-      className={`cartao ${selecionado ? 'sel' : ''} ${midia.revisado ? 'revisto' : ''}`}
+      className={`cartao ${selecionado ? 'sel' : ''} ${midia.revisado ? 'revisto' : ''}`
+        + `${midia.veredito ? ` julgado ${midia.veredito}` : ''}`}
       title={`${midia.caminho}\n${tamanhoCurto(midia.tamanho)}`}
       data-id={midia.id}
       layout="position"
@@ -726,6 +754,12 @@ function Cartao({
             </span>
           )}
           {midia.revisado > 0 && <span className="cartao-revisto" title="já revisado">✓</span>}
+          {midia.veredito && (
+            <span className={`cartao-veredito ${midia.veredito}`} title={`triagem: ${midia.veredito}`}>
+              {midia.veredito === 'usar' ? 'usar'
+                : midia.veredito === 'talvez' ? 'talvez' : 'descartar'}
+            </span>
+          )}
         </div>
         <div className="cartao-nome">{midia.nome}</div>
       </button>

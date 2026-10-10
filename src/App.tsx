@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador, type Qualidade } from './lib/api';
+import { api, ouvirProgresso, type Faixa, type Fonte, type Marcador, type Qualidade,
+  type Veredito } from './lib/api';
 import { Player } from './lib/player';
 import { estaDigitando } from './lib/teclado';
 import { caminhoDoArrasto, sessao } from './lib/sessao';
+import { navegacao, posicaoNaFila, vizinhoNaFila } from './lib/navegacao';
 import { Inicio } from './components/Inicio';
 import { Visor } from './components/Player';
 import { Timeline } from './components/Timeline';
@@ -88,6 +90,63 @@ Clique para renomear`}
   );
 }
 
+const VEREDITOS: { valor: Veredito; rotulo: string; tecla: string }[] = [
+  { valor: 'usar', rotulo: 'Usar', tecla: '1' },
+  { valor: 'talvez', rotulo: 'Talvez', tecla: '2' },
+  { valor: 'descartar', rotulo: 'Descartar', tecla: '3' },
+];
+
+/**
+ * Triagem no cinema: onde você está na fila, e o que achou do que viu.
+ *
+ * Os botões existem pra ensinar os atalhos, não pra serem o caminho normal —
+ * cada um mostra a tecla. Quem tria quarenta gravações faz isso com a mão no
+ * teclado; quem tria duas clica.
+ */
+function BarraTriagem({ fonte, veredito, aoJulgar, aoPassar }: {
+  fonte: Fonte;
+  veredito: Veredito | null;
+  aoJulgar: (v: Veredito) => void;
+  aoPassar: (passo: 1 | -1) => void;
+}) {
+  const i = posicaoNaFila(fonte.path);
+  const total = navegacao().fila.length;
+
+  return (
+    <div className="triagem">
+      {i >= 0 && total > 1 && (
+        <div className="triagem-fila">
+          <button
+            className="triagem-seta"
+            onClick={() => aoPassar(-1)}
+            disabled={i === 0}
+            title="Anterior da pasta (↑)"
+          >‹</button>
+          <span className="triagem-conta">{i + 1} <small>de {total}</small></span>
+          <button
+            className="triagem-seta"
+            onClick={() => aoPassar(1)}
+            disabled={i === total - 1}
+            title="Próximo da pasta (↓)"
+          >›</button>
+        </div>
+      )}
+      <div className="triagem-vereditos">
+        {VEREDITOS.map((v) => (
+          <button
+            key={v.valor}
+            className={`triagem-btn ${v.valor} ${veredito === v.valor ? 'on' : ''}`}
+            onClick={() => aoJulgar(v.valor)}
+            title={`${v.rotulo} (${v.tecla}) — a mesma tecla de novo desfaz`}
+          >
+            <kbd>{v.tecla}</kbd>{v.rotulo}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [atualId, setAtualId] = useState<number | null>(null);
   const [fonte, setFonte] = useState<Fonte | null>(null);
@@ -107,6 +166,9 @@ export default function App() {
   // Contador só para forçar o <video> a buscar de novo a MESMA URL.
   const [recarga, setRecarga] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // O veredito do arquivo aberto. Vem do servidor ao abrir e e otimista ao
+  // julgar: numa triagem, a tecla precisa responder na hora.
+  const [veredito, setVeredito] = useState<Veredito | null>(null);
   const player = useMemo(() => new Player(), []);
 
   // Em desenvolvimento, deixa o motor de reprodução acessível pelo console — sem
@@ -196,11 +258,16 @@ export default function App() {
    */
   const assistir = useCallback(async (caminho: string) => {
     setAbrindo(caminho);
+    setVeredito(null);
     try {
       const f = await api.assistir(caminho);
       setAtualId(f.id);
       setModo('cinema');
       setQualidade('original');
+      // O veredito mora na biblioteca, não na fonte: busca à parte.
+      api.infoMidiaPorCaminho(caminho)
+        .then((m) => setVeredito(m.veredito ?? null))
+        .catch(() => undefined);
       if (f.extraindoAudio) avisar('separando as faixas de áudio em segundo plano…');
     } catch (e) {
       avisar(`não consegui abrir: ${(e as Error).message}`);
@@ -208,6 +275,34 @@ export default function App() {
       setAbrindo(null);
     }
   }, [avisar]);
+
+  /**
+   * Próximo / anterior na fila que você estava vendo.
+   *
+   * Sem isto, julgar dez gravações são dez idas e voltas pela biblioteca; o
+   * trabalho vira o vai-e-volta, não o assistir.
+   */
+  const passar = useCallback((passo: 1 | -1) => {
+    if (!fonte) return;
+    const alvo = vizinhoNaFila(fonte.path, passo);
+    if (!alvo) {
+      avisar(posicaoNaFila(fonte.path) < 0
+        ? 'este vídeo não veio de uma lista — volte à biblioteca para escolher'
+        : passo > 0 ? 'é o último da pasta' : 'é o primeiro da pasta');
+      return;
+    }
+    player.pausar();
+    assistir(alvo);
+  }, [fonte, player, assistir, avisar]);
+
+  /** O veredito da triagem. A mesma tecla de novo desfaz. */
+  const julgar = useCallback(async (valor: Veredito) => {
+    if (!fonte) return;
+    const novo = veredito === valor ? null : valor;
+    setVeredito(novo);
+    try { await api.julgarFonte(fonte.id, novo); }
+    catch (e) { setVeredito(veredito); avisar(String((e as Error).message)); }
+  }, [fonte, veredito, avisar]);
 
   // "Abrir com" do Windows, e o segundo duplo clique com a janela já aberta.
   useEffect(() => {
@@ -359,6 +454,12 @@ export default function App() {
         case 't': case 'T':
           if (modo === 'cinema') { e.preventDefault(); setModo('estudio'); }
           break;
+        // Triagem: percorrer a fila e dar o veredito sem tocar no mouse.
+        case 'ArrowDown': e.preventDefault(); passar(1); break;
+        case 'ArrowUp': e.preventDefault(); passar(-1); break;
+        case '1': e.preventDefault(); julgar('usar'); break;
+        case '2': e.preventDefault(); julgar('talvez'); break;
+        case '3': e.preventDefault(); julgar('descartar'); break;
         case 'Escape':
           if (document.fullscreenElement) break;   // o próprio Esc já sai da tela cheia
           if (modo === 'estudio') setModo('cinema');
@@ -447,6 +548,12 @@ export default function App() {
                 <i />transcrevendo {Math.round(estadoTranscricao.pct * 100)}%
               </span>
             )}
+            <BarraTriagem
+              fonte={fonte}
+              veredito={veredito}
+              aoJulgar={julgar}
+              aoPassar={passar}
+            />
           </div>
         </div>
         {menu && (
