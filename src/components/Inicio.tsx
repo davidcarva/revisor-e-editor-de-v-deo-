@@ -4,13 +4,14 @@
 // aparece na tela — nunca antes. Numa pasta com centenas de gravações, gerar
 // tudo de uma vez seriam minutos de ffmpeg pra mostrar quatro fileiras.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ouvirProgresso, urlPoster, type Midia, type Pasta, type Subpasta } from '../lib/api';
+import { api, ouvirProgresso, type Midia, type Pasta, type Subpasta } from '../lib/api';
 import { duracaoCurta } from '../lib/tempo';
 import { noElectron } from '../lib/sessao';
 import { AnimatePresence, motion } from 'motion/react';
 import { BarraSelecao, DialogoApagar } from './Organizar';
 import { useLaco } from '../lib/laco';
 import { lembrar, navegacao } from '../lib/navegacao';
+import { useCapa } from '../lib/capas';
 import { DialogoPreparar, FaixaFila } from './Preparo';
 import { PainelEspaco } from './Espaco';
 import { Vitrine } from './Vitrine';
@@ -329,6 +330,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
 
   return (
     <div className={`inicio ${carregando ? 'carregando' : ''}`} ref={area}>
+      {carregando && <div className="barra-carregando"><i /></div>}
       <AnimatePresence>
         {caixa && caixa.w > 2 && caixa.h > 2 && (
           <motion.div
@@ -706,6 +708,7 @@ function Cartao({
     return () => { vivo = false; };
   }, [visivel, info.sondado, midia.id]);
 
+  const capa = useCapa(midia.id, visivel && midia.tipo === 'video' && !falhou);
   const dur = info.duracao ? duracaoCurta(info.duracao) : null;
 
   return (
@@ -743,7 +746,12 @@ function Cartao({
       >
         <div className={`cartao-arte ${midia.tipo}`}>
           {midia.tipo === 'video' && visivel && !falhou ? (
-            <img src={urlPoster(midia.id)} alt="" loading="lazy" onError={() => setFalhou(true)} />
+            <img
+              src={capa.src ?? undefined}
+              alt=""
+              onLoad={capa.terminou}
+              onError={() => { capa.terminou(); setFalhou(true); }}
+            />
           ) : (
             <span className="cartao-icone">{midia.tipo === 'audio' ? '♪' : '🎬'}</span>
           )}

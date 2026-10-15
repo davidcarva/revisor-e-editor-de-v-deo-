@@ -403,7 +403,31 @@ input:focus, textarea:focus, select:focus {
 .inicio section, .inicio .grade-pastas {
   transition: opacity var(--medio) var(--curva);
 }
-.inicio.carregando section, .inicio.carregando .grade-pastas { opacity: .45; }
+/* Carregando NAO apaga a pagina.
+   Apagar tudo — inclusive os botoes de pasta, que sao justamente o que se esta
+   clicando — fazia o app parecer travado quando ele so estava esperando o
+   servidor. Agora e uma barrinha no topo: diz que algo esta vindo sem sugerir
+   que nada funciona. O conteudo na tela continua valido ate o novo chegar. */
+.barra-carregando {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 2px;
+  margin: -30px -34px 28px;
+  background: var(--painel3);
+  overflow: hidden;
+}
+.barra-carregando i {
+  display: block;
+  height: 100%;
+  width: 36%;
+  background: var(--destaque);
+  animation: correndo 1.1s var(--curva) infinite;
+}
+@keyframes correndo {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(380%); }
+}
 .inicio h2 {
   font-size: 14px; font-weight: 600; margin: 0 0 12px;
   display: flex; align-items: baseline; gap: 10px;

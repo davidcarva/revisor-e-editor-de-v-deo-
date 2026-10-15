@@ -165,8 +165,20 @@ export type ResumoCache = {
   fontes: FonteNoCache[];
 };
 
-async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
+/**
+ * `limite` em milissegundos: um pedido que nunca volta deixa a interface
+ * esperando pra sempre, e "esperando pra sempre" e indistinguivel de "travado".
+ * Melhor falhar com mensagem do que ficar carregando sem fim.
+ */
+async function pedir<T>(url: string, init?: RequestInit, limite = 0): Promise<T> {
+  const corte = limite ? AbortSignal.timeout(limite) : undefined;
+  const r = await fetch(url, corte ? { ...init, signal: corte } : init)
+    .catch((e) => {
+      if ((e as Error)?.name === 'TimeoutError') {
+        throw new Error(`o servidor não respondeu em ${Math.round(limite / 1000)}s`);
+      }
+      throw e;
+    });
   const texto = await r.text();
   let corpo: unknown;
   try { corpo = texto ? JSON.parse(texto) : null; } catch { corpo = texto; }
@@ -261,7 +273,7 @@ export const api = {
           // `recursivo` vai como 0/1: o servidor compara com a string '0', e
           // "false" passaria no teste como se fosse verdadeiro.
           .map(([k, v]) => [k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v)]),
-      )}`),
+      )}`, undefined, 20_000),
   // --- organizar: mexe nos arquivos de verdade, sempre via plano + confirmação
   planoMover: (ids: number[], destino: string) =>
     pedir<{ passos: PassoPlano[] }>('/api/biblioteca/plano/mover', json('POST', { ids, destino })),

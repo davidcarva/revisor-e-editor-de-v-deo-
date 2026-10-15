@@ -4,7 +4,8 @@
 // detalhes é "qual é o maior / o mais longo?", ícones é "quantos são?", e lado
 // a lado é o meio-termo com nome, tipo e tamanho legíveis de relance.
 import { useEffect, useRef, useState } from 'react';
-import { api, urlPoster, type Midia } from '../lib/api';
+import { api, type Midia } from '../lib/api';
+import { useCapa } from '../lib/capas';
 import { duracaoCurta } from '../lib/tempo';
 
 export type Visual = 'grade' | 'detalhes' | 'icones' | 'ladoALado';
@@ -195,6 +196,7 @@ function Icone({ midia, selecionado, onClick }: {
 }) {
   const { visivel, ref } = useInfo(midia);
   const [falhou, setFalhou] = useState(false);
+  const capa = useCapa(midia.id, visivel && midia.tipo === 'video' && !falhou);
   return (
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
@@ -205,7 +207,14 @@ function Icone({ midia, selecionado, onClick }: {
     >
       <span className={`icone-arte ${midia.tipo}`}>
         {midia.tipo === 'video' && visivel && !falhou
-          ? <img src={urlPoster(midia.id)} alt="" loading="lazy" onError={() => setFalhou(true)} />
+          ? (
+            <img
+              src={capa.src ?? undefined}
+              alt=""
+              onLoad={capa.terminou}
+              onError={() => { capa.terminou(); setFalhou(true); }}
+            />
+          )
           : <span className="icone-glifo">{midia.tipo === 'audio' ? '♪' : '▶'}</span>}
       </span>
       <span className="icone-nome">{midia.nome}</span>
@@ -235,6 +244,7 @@ function Ladrilho({ midia, selecionado, onClick }: {
 }) {
   const { info, visivel, ref } = useInfo(midia);
   const [falhou, setFalhou] = useState(false);
+  const capa = useCapa(midia.id, visivel && midia.tipo === 'video' && !falhou);
   return (
     <button
       ref={ref as React.Ref<HTMLButtonElement>}
@@ -245,7 +255,14 @@ function Ladrilho({ midia, selecionado, onClick }: {
     >
       <span className={`ladrilho-arte ${midia.tipo}`}>
         {midia.tipo === 'video' && visivel && !falhou
-          ? <img src={urlPoster(midia.id)} alt="" loading="lazy" onError={() => setFalhou(true)} />
+          ? (
+            <img
+              src={capa.src ?? undefined}
+              alt=""
+              onLoad={capa.terminou}
+              onError={() => { capa.terminou(); setFalhou(true); }}
+            />
+          )
           : <span className="icone-glifo">{midia.tipo === 'audio' ? '♪' : '▶'}</span>}
       </span>
       <span className="ladrilho-texto">
