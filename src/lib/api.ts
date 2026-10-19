@@ -257,7 +257,11 @@ export const api = {
 
   biblioteca: (p: {
     q?: string; pasta?: string; ordem?: string; dir?: string; limite?: number;
-    recursivo?: boolean; filtro?: string;
+    recursivo?: boolean;
+    /** Os tres eixos de filtro, somados com E. */
+    tipo?: string; veredito?: string; marca?: string;
+    /** Eixo unico, do jeito antigo. Continua valendo pra quem so quer um. */
+    filtro?: string;
   } = {}) =>
     pedir<{
       itens: Midia[];

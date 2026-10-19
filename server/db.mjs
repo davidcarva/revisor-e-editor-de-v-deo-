@@ -500,10 +500,32 @@ export const marcarAusentes = (pasta) =>
  */
 export function listarMidia({
   q = '', pasta = '', ordem = 'modificado', dir = 'desc',
-  limite = 120, offset = 0, recursivo = true, filtro = '',
+  limite = 120, offset = 0, recursivo = true,
+  tipo = '', veredito = '', marca = '',
+  filtro = '',
 } = {}) {
   const cond = ['ausente = 0'];
   const args = [];
+
+  // Tres eixos independentes, somados com E.
+  //
+  // Antes era um `filtro` so, e por isso "so video" e "ainda nao julguei" se
+  // excluiam — justamente a pergunta que a triagem faz o tempo todo. Cada
+  // pergunta e de uma natureza diferente: o QUE o arquivo e, o que voce DECIDIU
+  // sobre ele, e como voce o MARCOU. Elas nao disputam o mesmo controle.
+  if (tipo === 'video' || tipo === 'audio') { cond.push('tipo = ?'); args.push(tipo); }
+  else if (tipo.startsWith('.')) { cond.push('ext = ?'); args.push(tipo); }
+
+  if (veredito === 'semVeredito') cond.push('veredito IS NULL');
+  else if (VEREDITOS.has(veredito)) { cond.push('veredito = ?'); args.push(veredito); }
+
+  if (marca === 'favoritos') cond.push('favorito = 1');
+  else if (marca === 'destaques') cond.push('destaque = 1');
+  else if (marca === 'naoRevisados') cond.push('revisado = 0');
+  else if (marca === 'revisados') cond.push('revisado = 1');
+
+  // `filtro` continua valendo pra quem chama de fora da grade (e pra nao
+  // quebrar um link antigo): e o mesmo vocabulario, num eixo so.
   if (filtro === 'favoritos') cond.push('favorito = 1');
   if (filtro === 'destaques') cond.push('destaque = 1');
   if (filtro === 'semVeredito') cond.push('veredito IS NULL');

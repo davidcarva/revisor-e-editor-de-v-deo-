@@ -24,10 +24,15 @@ const ultimoTrecho = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
 const AGRUPAR: [string, string][] = [
   ['nenhum', 'Sem agrupar'],
+  ['veredito', 'Por veredito'],
   ['dia', 'Por dia'],
   ['tipo', 'Vídeo / áudio'],
   ['ext', 'Por formato'],
 ];
+
+// Agrupado por veredito, a ordem é a da decisão, não a do alfabeto: o que você
+// aprovou primeiro, o que ainda não olhou por último.
+const ORDEM_VEREDITO = ['Usar', 'Talvez', 'Descartar', 'Ainda não julguei'];
 
 /**
  * Rótulo do grupo a que um arquivo pertence.
@@ -36,7 +41,12 @@ const AGRUPAR: [string, string][] = [
  * estão longe — é assim que se pensa sobre as próprias gravações, não em
  * carimbos de tempo.
  */
+const ROTULO_VEREDITO: Record<string, string> = {
+  usar: 'Usar', talvez: 'Talvez', descartar: 'Descartar',
+};
+
 function grupoDe(m: Midia, modo: string): string {
+  if (modo === 'veredito') return ROTULO_VEREDITO[m.veredito ?? ''] ?? 'Ainda não julguei';
   if (modo === 'tipo') return m.tipo === 'audio' ? 'Áudio' : 'Vídeo';
   if (modo === 'ext') return m.ext.replace('.', '').toUpperCase();
   const d = new Date(m.modificado);
@@ -70,7 +80,10 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     catch { return 'grade'; }
   });
   const [ocupado, setOcupado] = useState(false);
-  const [filtro, setFiltro] = useState(navegacao().filtro);
+  // Três eixos, não um. Ver o comentário em `listarMidia`, no servidor.
+  const [tipo, setTipo] = useState(navegacao().tipo);
+  const [veredito, setVeredito] = useState(navegacao().veredito);
+  const [marca, setMarca] = useState(navegacao().marca);
   const [selecao, setSelecao] = useState<Set<number>>(new Set());
   const [preparando, setPreparando] = useState<string[] | null>(null);
   const [verEspaco, setVerEspaco] = useState(false);
@@ -104,7 +117,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       // busca; quem sabe onde esta, entra na pasta. O resto e a vitrine.
       const listando = Boolean(pasta || busca);
       const r = await api.biblioteca({
-        q: busca, pasta, ordem, dir, filtro,
+        q: busca, pasta, ordem, dir, tipo, veredito, marca,
         limite: listando ? 300 : 0,
         recursivo: pasta ? recursivo : true,
       });
@@ -133,7 +146,7 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
     } finally {
       if (meu === pedido.current) setCarregando(false);
     }
-  }, [busca, pasta, ordem, dir, filtro, recursivo, aoAvisar]);
+  }, [busca, pasta, ordem, dir, tipo, veredito, marca, recursivo, aoAvisar]);
 
   useEffect(() => {
     const id = window.setTimeout(carregar, busca ? 250 : 0);
@@ -241,8 +254,8 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
 
   // Guarda onde você está, pra voltar de um vídeo cair aqui e não no começo.
   useEffect(() => {
-    lembrar({ pasta, busca, ordem, dir, filtro, recursivo, agrupar });
-  }, [pasta, busca, ordem, dir, filtro, recursivo, agrupar]);
+    lembrar({ pasta, busca, ordem, dir, tipo, veredito, marca, recursivo, agrupar });
+  }, [pasta, busca, ordem, dir, tipo, veredito, marca, recursivo, agrupar]);
 
   /**
    * Abre um vídeo levando junto a fila do que estava na tela.
@@ -311,7 +324,11 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
       if (!mapa.has(g)) mapa.set(g, []);
       mapa.get(g)!.push(m);
     }
-    return [...mapa.entries()].map(([titulo, lista]) => ({ titulo, itens: lista }));
+    const grupos = [...mapa.entries()].map(([titulo, lista]) => ({ titulo, itens: lista }));
+    if (agrupar === 'veredito') {
+      grupos.sort((a, b) => ORDEM_VEREDITO.indexOf(a.titulo) - ORDEM_VEREDITO.indexOf(b.titulo));
+    }
+    return grupos;
   }, [itens, agrupar]);
 
   // Clicar na coluna que já ordena inverte; clicar em outra começa pelo sentido
@@ -430,8 +447,21 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
                 incluir subpastas
               </label>
             )}
-            <select value={filtro} onChange={(e) => setFiltro(e.target.value)} title="Filtrar">
-              <option value="">Todos</option>
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)} title="Tipo de arquivo">
+              <option value="">Todos os tipos</option>
+              <option value="video">Só vídeo</option>
+              <option value="audio">Só áudio</option>
+              {formatos.map((f) => (
+                <option key={f.ext} value={f.ext}>{f.ext} ({f.n})</option>
+              ))}
+            </select>
+            <select
+              className={veredito ? 'ligado' : ''}
+              value={veredito}
+              onChange={(e) => setVeredito(e.target.value)}
+              title="Triagem"
+            >
+              <option value="">Qualquer veredito</option>
               <option value="semVeredito">
                 Ainda não julguei{vereditos.semVeredito ? ` (${vereditos.semVeredito})` : ''}
               </option>
@@ -440,15 +470,18 @@ export function Inicio({ aoAbrir, aoAvisar }: Props) {
               <option value="descartar">
                 Descartar{vereditos.descartar ? ` (${vereditos.descartar})` : ''}
               </option>
+            </select>
+            <select
+              className={marca ? 'ligado' : ''}
+              value={marca}
+              onChange={(e) => setMarca(e.target.value)}
+              title="Marcas"
+            >
+              <option value="">Qualquer marca</option>
               <option value="destaques">★ Na vitrine</option>
               <option value="favoritos">Favoritos</option>
               <option value="naoRevisados">Ainda não revisados</option>
               <option value="revisados">Já revisados</option>
-              <option value="video">Só vídeo</option>
-              <option value="audio">Só áudio</option>
-              {formatos.map((f) => (
-                <option key={f.ext} value={f.ext}>{f.ext} ({f.n})</option>
-              ))}
             </select>
             <select value={agrupar} onChange={(e) => setAgrupar(e.target.value)} title="Agrupar">
               {AGRUPAR.map(([v, r]) => <option key={v} value={v}>{r}</option>)}

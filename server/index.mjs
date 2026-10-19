@@ -383,6 +383,9 @@ app.get('/api/biblioteca', rota((req, res) => {
       recursivo,
       ordem: String(req.query.ordem || 'modificado'),
       dir: String(req.query.dir || 'desc'),
+      tipo: String(req.query.tipo || ''),
+      veredito: String(req.query.veredito || ''),
+      marca: String(req.query.marca || ''),
       filtro: String(req.query.filtro || ''),
       // `limite=0` e um pedido legitimo: a pagina inicial quer as pastas, a
       // contagem e os formatos SEM a lista. `|| 120` engoliria o zero.

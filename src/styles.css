@@ -364,7 +364,23 @@ input:focus, textarea:focus, select:focus {
   padding: 3px 6px; font-size: 10px; color: var(--apagado);
   border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0;
 }
-.inicio-controles { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+/* Quebra linha: sao tres filtros agora, e numa janela estreita eles nao cabem
+   na mesma fileira da trilha. */
+.inicio-controles {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+/* Filtro ativo fica visivel: com tres controles, um deles ligado no meio dos
+   outros dois passa despercebido — e aí a grade "esconde arquivos" sem motivo
+   aparente. */
+.inicio-controles select.ligado {
+  border-color: var(--destaque);
+  color: var(--destaque);
+}
 .alternador {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 12px; color: var(--fraco); cursor: pointer;

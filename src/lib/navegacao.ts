@@ -16,7 +16,9 @@ export type Navegacao = {
   busca: string;
   ordem: string;
   dir: 'asc' | 'desc';
-  filtro: string;
+  tipo: string;
+  veredito: string;
+  marca: string;
   recursivo: boolean;
   agrupar: string;
   rolagem: number;
@@ -37,7 +39,9 @@ const INICIAL: Navegacao = {
   busca: '',
   ordem: 'modificado',
   dir: 'desc',
-  filtro: '',
+  tipo: '',
+  veredito: '',
+  marca: '',
   recursivo: false,
   agrupar: 'nenhum',
   rolagem: 0,
